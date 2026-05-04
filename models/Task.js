@@ -31,26 +31,23 @@ export default class Task {
       logInfo('TASK', `Fetching active tasks for user ${userId}`);
       
       db.all(
-        `SELECT t.*, u.username as owner_username,
-         CASE WHEN t.owner_id = ? THEN 1 ELSE 0 END as is_owner
+        `SELECT t.*, u.username as owner_username
          FROM tasks t 
          JOIN users u ON t.owner_id = u.id 
          WHERE t.status = 'active' 
          AND t.completed_count < t.required_count
-         AND (
-           t.owner_id = ? OR
-           (t.id NOT IN (
-             SELECT task_id FROM task_submissions WHERE user_id = ?
-           )
-           AND t.id NOT IN (
-             SELECT task_id FROM hidden_tasks WHERE user_id = ?
-           ))
+         AND t.owner_id != ?
+         AND t.id NOT IN (
+           SELECT task_id FROM task_submissions WHERE user_id = ?
+         )
+         AND t.id NOT IN (
+           SELECT task_id FROM hidden_tasks WHERE user_id = ?
          )
          ORDER BY 
            CASE WHEN t.task_type = 'paid' THEN t.reward_per_user ELSE 0 END DESC,
            t.created_at DESC
-         LIMIT 11`,
-        [userId, userId, userId, userId],
+         LIMIT 10`,
+        [userId, userId, userId],
         (err, rows) => {
           if (err) {
             logError('TASK', 'Failed to fetch active tasks', err);

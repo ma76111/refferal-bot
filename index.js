@@ -1727,56 +1727,18 @@ bot.on('callback_query', async (query) => {
     
     if (user) {
       await HiddenTask.hide(user.id, taskId);
-      await bot.answerCallbackQuery(query.id, { text: '✅ تم إخفاء المهمة' });
       
-      // تحديث قائمة المهام
-      const tasks = await Task.getActiveTasks(user.id);
+      const lang = user.language || 'ar';
+      const messages = {
+        ar: '✅ تم إخفاء المهمة',
+        en: '✅ Task hidden',
+        ru: '✅ Задача скрыта'
+      };
       
-      if (tasks.length === 0) {
-        await bot.editMessageText(
-          '❌ لا توجد مهام متاحة حالياً',
-          { chat_id: query.message.chat.id, message_id: query.message.message_id }
-        );
-        return;
-      }
-
-      let message = '📋 المهام المتاحة (مرتبة حسب أعلى مكافأة):\n\n';
-      const keyboard = [];
+      await bot.answerCallbackQuery(query.id, { text: messages[lang] });
       
-      for (let i = 0; i < tasks.length; i++) {
-        const task = tasks[i];
-        const isOwner = task.is_owner === 1;
-        
-        message += `${i + 1}. 🤖 ${task.bot_name}`;
-        if (isOwner) {
-          message += ` 👤 (مهمتك)`;
-        }
-        message += `\n`;
-        const exchangeRewardText = {
-          ar: '+1 نقطة تبادل',
-          en: '+1 Exchange Point',
-          ru: '+1 Балл обмена'
-        };
-        const lang = user?.language || 'ar';
-        message += `   💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeRewardText[lang]}\n`;
-        message += `   👥 ${task.completed_count}/${task.required_count}\n\n`;
-        
-        // إضافة أزرار فقط إذا لم يكن صاحب المهمة
-        if (!isOwner) {
-          keyboard.push([
-            { text: `✅ تنفيذ المهمة ${i + 1}`, callback_data: `execute_task_${task.id}` },
-            { text: `❌ إخفاء المهمة ${i + 1}`, callback_data: `hide_task_${task.id}` }
-          ]);
-        }
-      }
-
-      await bot.editMessageText(message, {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
-        reply_markup: {
-          inline_keyboard: keyboard
-        }
-      });
+      // حذف رسالة المهمة
+      await bot.deleteMessage(query.message.chat.id, query.message.message_id);
     }
     return;
   }

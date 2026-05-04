@@ -1022,6 +1022,12 @@ bot.on('callback_query', async (query) => {
     return;
   }
 
+  if (data === 'confirm_create_task' || data === 'cancel_create_task') {
+    const { handleTaskConfirmation } = await import('./handlers/taskHandler.js');
+    await handleTaskConfirmation(bot, query);
+    return;
+  }
+
   if (data.startsWith('admin_')) {
     // معالج تعديل الرصيد
     if (data.startsWith('admin_edit_balance_')) {

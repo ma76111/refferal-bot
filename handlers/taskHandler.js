@@ -315,96 +315,104 @@ export async function handleProofType(bot, query) {
   };
 
   state.proofType = proofTypeMap[query.data];
+  state.step = 'awaiting_confirmation';
+  userStates.set(chatId, state);
 
-  try {
-    logger.info(`Creating task: ${state.botName} (${state.taskType})`);
-    
-    const taskId = await Task.create({
-      ownerId: state.userId,
-      botName: state.botName,
-      referralLink: state.referralLink,
-      requiredCount: state.requiredCount,
-      taskType: state.taskType,
-      rewardPerUser: state.rewardPerUser,
-      verificationInstructions: state.verificationInstructions,
-      proofType: state.proofType
-    });
+  // عرض ملخص المهمة للتأكيد
+  const proofTypeTexts = {
+    ar: {
+      text: 'نص فقط',
+      images: 'صور فقط',
+      both: 'نص + صور'
+    },
+    en: {
+      text: 'Text only',
+      images: 'Images only',
+      both: 'Text + images'
+    },
+    ru: {
+      text: 'Только текст',
+      images: 'Только изображения',
+      both: 'Текст + изображения'
+    }
+  };
 
-    logger.success(`Task created successfully with ID: ${taskId}`);
+  const confirmMessages = {
+    ar: {
+      title: '📋 تأكيد إنشاء المهمة',
+      bot: 'البوت',
+      link: 'رابط الإحالة',
+      required: 'العدد المطلوب',
+      type: 'نوع المهمة',
+      paid: 'مهمة مدفوعة',
+      exchange: 'تبادل إحالات',
+      reward: 'المكافأة لكل شخص',
+      exchangePoint: '+1 نقطة تبادل',
+      instructions: 'التعليمات',
+      proofType: 'نوع الإثبات',
+      question: '\n❓ هل تريد إنشاء هذه المهمة؟',
+      confirm: '✅ تأكيد الإنشاء',
+      cancel: '❌ إلغاء'
+    },
+    en: {
+      title: '📋 Confirm Task Creation',
+      bot: 'Bot',
+      link: 'Referral link',
+      required: 'Required count',
+      type: 'Task type',
+      paid: 'Paid task',
+      exchange: 'Referral exchange',
+      reward: 'Reward per person',
+      exchangePoint: '+1 Exchange Point',
+      instructions: 'Instructions',
+      proofType: 'Proof type',
+      question: '\n❓ Do you want to create this task?',
+      confirm: '✅ Confirm Creation',
+      cancel: '❌ Cancel'
+    },
+    ru: {
+      title: '📋 Подтверждение создания задачи',
+      bot: 'Бот',
+      link: 'Реферальная ссылка',
+      required: 'Требуется',
+      type: 'Тип задачи',
+      paid: 'Платная задача',
+      exchange: 'Обмен рефералами',
+      reward: 'Награда за человека',
+      exchangePoint: '+1 Балл обмена',
+      instructions: 'Инструкции',
+      proofType: 'Тип доказательства',
+      question: '\n❓ Вы хотите создать эту задачу?',
+      confirm: '✅ Подтвердить создание',
+      cancel: '❌ Отмена'
+    }
+  };
 
-    // التحقق من أن المستخدم أدمن
-    const user = await User.findByTelegramId(query.from.id);
-    const isAdmin = config.ADMIN_IDS.includes(query.from.id);
+  const t = confirmMessages[lang];
+  const taskTypeText = state.taskType === 'paid' ? t.paid : t.exchange;
+  const rewardText = state.taskType === 'paid' ? `${state.rewardPerUser} USDT` : t.exchangePoint;
+  const proofText = proofTypeTexts[lang][state.proofType];
 
-    const successMessages = {
-      ar: {
-        created: 'تم إنشاء المهمة بنجاح',
-        bot: 'البوت',
-        required: 'العدد المطلوب',
-        reward: 'المكافأة',
-        exchange: '+1 نقطة تبادل',
-        taskId: 'رقم المهمة',
-        backButton: 'رجوع للقائمة الرئيسية'
-      },
-      en: {
-        created: 'Task created successfully',
-        bot: 'Bot',
-        required: 'Required count',
-        reward: 'Reward',
-        exchange: '+1 Exchange Point',
-        taskId: 'Task ID',
-        backButton: 'Back to main menu'
-      },
-      ru: {
-        created: 'Задача успешно создана',
-        bot: 'Бот',
-        required: 'Требуется',
-        reward: 'Награда',
-        exchange: '+1 Балл обмена',
-        taskId: 'ID задачи',
-        backButton: 'Вернуться в главное меню'
-      }
-    };
+  let message = `${t.title}\n\n`;
+  message += `🤖 ${t.bot}: ${state.botName}\n`;
+  message += `🔗 ${t.link}:\n${state.referralLink}\n\n`;
+  message += `👥 ${t.required}: ${state.requiredCount}\n`;
+  message += `📊 ${t.type}: ${taskTypeText}\n`;
+  message += `💰 ${t.reward}: ${rewardText}\n`;
+  message += `📸 ${t.proofType}: ${proofText}\n\n`;
+  message += `📝 ${t.instructions}:\n${state.verificationInstructions}`;
+  message += t.question;
 
-    const t = successMessages[lang];
-    const rewardText = state.taskType === 'paid' ? `${state.rewardPerUser} USDT` : t.exchange;
-
-    await bot.editMessageText(
-      `✅ ${t.created}!\n\n` +
-      `🤖 ${t.bot}: ${state.botName}\n` +
-      `👥 ${t.required}: ${state.requiredCount}\n` +
-      `💰 ${t.reward}: ${rewardText}\n` +
-      `🆔 ${t.taskId}: ${taskId}`,
-      { 
-        chat_id: chatId, 
-        message_id: query.message.message_id,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: `🔙 ${t.backButton}`, callback_data: 'back_to_menu' }]
-          ]
-        }
-      }
-    );
-
-    // إرسال القائمة الرئيسية
-    const mainMenuMessages = {
-      ar: '📋 القائمة الرئيسية:',
-      en: '📋 Main Menu:',
-      ru: '📋 Главное меню:'
-    };
-    
-    await bot.sendMessage(chatId, mainMenuMessages[lang], isAdmin ? adminMenu : mainMenu);
-
-    userStates.delete(chatId);
-  } catch (error) {
-    const errorMessages = {
-      ar: '❌ حدث خطأ أثناء إنشاء المهمة',
-      en: '❌ Error occurred while creating task',
-      ru: '❌ Произошла ошибка при создании задачи'
-    };
-    await bot.sendMessage(chatId, errorMessages[lang]);
-    console.error(error);
-  }
+  await bot.editMessageText(message, {
+    chat_id: chatId,
+    message_id: query.message.message_id,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t.confirm, callback_data: 'confirm_create_task' }],
+        [{ text: t.cancel, callback_data: 'cancel_create_task' }]
+      ]
+    }
+  });
 }
 
 export async function handleViewTasks(bot, msg) {
@@ -615,4 +623,141 @@ function getProofTypeText(proofType, lang = 'ar') {
     }
   };
   return types[lang][proofType] || types['ar'][proofType] || 'غير محدد';
+}
+
+export async function handleTaskConfirmation(bot, query) {
+  const chatId = query.message.chat.id;
+  const state = userStates.get(chatId);
+  
+  if (!state) {
+    await bot.answerCallbackQuery(query.id, { text: '❌ Session expired' });
+    return;
+  }
+
+  const lang = state.lang || 'ar';
+
+  if (query.data === 'cancel_create_task') {
+    userStates.delete(chatId);
+    
+    const cancelMessages = {
+      ar: '❌ تم إلغاء إنشاء المهمة',
+      en: '❌ Task creation cancelled',
+      ru: '❌ Создание задачи отменено'
+    };
+    
+    await bot.editMessageText(cancelMessages[lang], {
+      chat_id: chatId,
+      message_id: query.message.message_id
+    });
+    
+    await bot.answerCallbackQuery(query.id);
+    
+    // إرسال القائمة الرئيسية
+    const isAdmin = config.ADMIN_IDS.includes(query.from.id);
+    const mainMenuMessages = {
+      ar: '📋 القائمة الرئيسية:',
+      en: '📋 Main Menu:',
+      ru: '📋 Главное меню:'
+    };
+    await bot.sendMessage(chatId, mainMenuMessages[lang], isAdmin ? adminMenu : mainMenu);
+    return;
+  }
+
+  if (query.data === 'confirm_create_task') {
+    try {
+      logger.info(`Creating task: ${state.botName} (${state.taskType})`);
+      
+      const taskId = await Task.create({
+        ownerId: state.userId,
+        botName: state.botName,
+        referralLink: state.referralLink,
+        requiredCount: state.requiredCount,
+        taskType: state.taskType,
+        rewardPerUser: state.rewardPerUser,
+        verificationInstructions: state.verificationInstructions,
+        proofType: state.proofType
+      });
+
+      logger.success(`Task created successfully with ID: ${taskId}`);
+
+      // التحقق من أن المستخدم أدمن
+      const isAdmin = config.ADMIN_IDS.includes(query.from.id);
+
+      const successMessages = {
+        ar: {
+          created: 'تم إنشاء المهمة بنجاح',
+          bot: 'البوت',
+          required: 'العدد المطلوب',
+          reward: 'المكافأة',
+          exchange: '+1 نقطة تبادل',
+          taskId: 'رقم المهمة',
+          backButton: 'رجوع للقائمة الرئيسية'
+        },
+        en: {
+          created: 'Task created successfully',
+          bot: 'Bot',
+          required: 'Required count',
+          reward: 'Reward',
+          exchange: '+1 Exchange Point',
+          taskId: 'Task ID',
+          backButton: 'Back to main menu'
+        },
+        ru: {
+          created: 'Задача успешно создана',
+          bot: 'Бот',
+          required: 'Требуется',
+          reward: 'Награда',
+          exchange: '+1 Балл обмена',
+          taskId: 'ID задачи',
+          backButton: 'Вернуться в главное меню'
+        }
+      };
+
+      const t = successMessages[lang];
+      const rewardText = state.taskType === 'paid' ? `${state.rewardPerUser} USDT` : t.exchange;
+
+      await bot.editMessageText(
+        `✅ ${t.created}!\n\n` +
+        `🤖 ${t.bot}: ${state.botName}\n` +
+        `👥 ${t.required}: ${state.requiredCount}\n` +
+        `💰 ${t.reward}: ${rewardText}\n` +
+        `🆔 ${t.taskId}: ${taskId}`,
+        { 
+          chat_id: chatId, 
+          message_id: query.message.message_id,
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `🔙 ${t.backButton}`, callback_data: 'back_to_menu' }]
+            ]
+          }
+        }
+      );
+
+      await bot.answerCallbackQuery(query.id, { text: '✅' });
+
+      // إرسال القائمة الرئيسية
+      const mainMenuMessages = {
+        ar: '📋 القائمة الرئيسية:',
+        en: '📋 Main Menu:',
+        ru: '📋 Главное меню:'
+      };
+      
+      await bot.sendMessage(chatId, mainMenuMessages[lang], isAdmin ? adminMenu : mainMenu);
+
+      userStates.delete(chatId);
+    } catch (error) {
+      const errorMessages = {
+        ar: '❌ حدث خطأ أثناء إنشاء المهمة',
+        en: '❌ Error occurred while creating task',
+        ru: '❌ Произошла ошибка при создании задачи'
+      };
+      await bot.editMessageText(errorMessages[lang], {
+        chat_id: chatId,
+        message_id: query.message.message_id
+      });
+      await bot.answerCallbackQuery(query.id, { text: '❌' });
+      console.error(error);
+      userStates.delete(chatId);
+    }
+  }
 }

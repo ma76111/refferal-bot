@@ -441,9 +441,9 @@ export async function handleViewTasks(bot, msg) {
   }
 
   const headers = {
-    ar: '📋 المهام المتاحة (مرتبة حسب أعلى مكافأة):\n\n',
-    en: '📋 Available Tasks (sorted by highest reward):\n\n',
-    ru: '📋 Доступные задачи (отсортированы по наибольшей награде):\n\n'
+    ar: '📋 المهام المتاحة (مرتبة حسب أعلى مكافأة):',
+    en: '📋 Available Tasks (sorted by highest reward):',
+    ru: '📋 Доступные задачи (отсортированы по наибольшей награде):'
   };
 
   const yourTaskText = {
@@ -459,46 +459,52 @@ export async function handleViewTasks(bot, msg) {
   };
 
   const executeText = {
-    ar: 'تنفيذ المهمة',
-    en: 'Execute task',
-    ru: 'Выполнить задачу'
+    ar: '✅ تنفيذ المهمة',
+    en: '✅ Execute Task',
+    ru: '✅ Выполнить задачу'
   };
 
   const hideText = {
-    ar: 'إخفاء المهمة',
-    en: 'Hide task',
-    ru: 'Скрыть задачу'
+    ar: '❌ إخفاء المهمة',
+    en: '❌ Hide Task',
+    ru: '❌ Скрыть задачу'
   };
 
-  let message = headers[lang];
-  const keyboard = [];
+  // إرسال رسالة العنوان
+  await bot.sendMessage(chatId, headers[lang]);
   
+  // إرسال كل مهمة في رسالة منفصلة
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
     const isOwner = task.is_owner === 1;
     
-    message += `${i + 1}. 🤖 ${task.bot_name}`;
+    let message = `${i + 1}. 🤖 ${task.bot_name}`;
     if (isOwner) {
       message += ` 👤 ${yourTaskText[lang]}`;
     }
     message += `\n`;
-    message += `   💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeText[lang]}\n`;
-    message += `   👥 ${task.completed_count}/${task.required_count}\n\n`;
+    message += `💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeText[lang]}\n`;
+    message += `👥 ${task.completed_count}/${task.required_count}`;
     
     // إضافة أزرار فقط إذا لم يكن صاحب المهمة
     if (!isOwner) {
-      keyboard.push([
-        { text: `✅ ${executeText[lang]} ${i + 1}`, callback_data: `execute_task_${task.id}` },
-        { text: `❌ ${hideText[lang]} ${i + 1}`, callback_data: `hide_task_${task.id}` }
-      ]);
+      const keyboard = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: executeText[lang], callback_data: `execute_task_${task.id}` },
+              { text: hideText[lang], callback_data: `hide_task_${task.id}` }
+            ]
+          ]
+        }
+      };
+      
+      await bot.sendMessage(chatId, message, keyboard);
+    } else {
+      // إرسال بدون أزرار إذا كان صاحب المهمة
+      await bot.sendMessage(chatId, message);
     }
   }
-
-  await bot.sendMessage(chatId, message, {
-    reply_markup: {
-      inline_keyboard: keyboard
-    }
-  });
 }
 
 export async function handleTaskDetails(bot, msg, taskId) {

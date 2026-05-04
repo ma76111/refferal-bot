@@ -195,6 +195,21 @@ export async function handleAdminSteps(bot, msg) {
       adminStates.delete(chatId);
       break;
 
+    case 'awaiting_min_reward':
+      const minReward = parseFloat(msg.text);
+      if (isNaN(minReward) || minReward < 0) {
+        await bot.sendMessage(chatId, '❌ الرجاء إرسال مبلغ صحيح (يجب أن يكون 0 أو أكثر)');
+        return true;
+      }
+      await Settings.setMinReward(minReward);
+      await bot.sendMessage(
+        chatId,
+        `✅ تم تحديث الحد الأدنى للمكافأة إلى: ${minReward} USDT`,
+        adminPanelKeyboard
+      );
+      adminStates.delete(chatId);
+      break;
+
     default:
       return false;
   }

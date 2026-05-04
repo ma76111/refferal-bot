@@ -99,4 +99,16 @@ export default class Settings {
     logInfo('SETTINGS', `Setting improvement timeout to: ${seconds} seconds (${seconds / 60} minutes)`);
     return await this.set('improvement_timeout', seconds);
   }
+
+  static async getMinReward() {
+    const value = await this.get('min_reward');
+    const result = value || 0.01; // 0.01 USDT افتراضياً
+    logInfo('SETTINGS', `Minimum reward: ${result} USDT`);
+    return result;
+  }
+
+  static async setMinReward(amount) {
+    logInfo('SETTINGS', `Setting minimum reward to: ${amount} USDT`);
+    return await this.set('min_reward', amount);
+  }
 }

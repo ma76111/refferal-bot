@@ -918,6 +918,33 @@ bot.onText(/🔄 تغيير مهلة التحسين/, async (msg) => {
   );
 });
 
+// معالج تغيير الحد الأدنى للمكافأة (للأدمن فقط)
+bot.onText(/💰 تغيير الحد الأدنى للمكافأة/, async (msg) => {
+  logCommand('💰 Change Min Reward', msg.from.id, msg.from.username);
+  
+  if (!config.ADMIN_IDS.includes(msg.from.id)) {
+    await bot.sendMessage(msg.chat.id, '❌ غير مصرح لك بهذا الأمر');
+    return;
+  }
+
+  const currentMinReward = await Settings.getMinReward();
+  
+  adminStatesFromHandler.set(msg.chat.id, { step: 'awaiting_min_reward' });
+  
+  await bot.sendMessage(
+    msg.chat.id,
+    `💰 تغيير الحد الأدنى للمكافأة\n\n` +
+    `💵 الحد الأدنى الحالي: ${currentMinReward} USDT\n\n` +
+    `📝 أرسل الحد الأدنى الجديد (بالـ USDT):`,
+    {
+      reply_markup: {
+        keyboard: [['❌ إلغاء']],
+        resize_keyboard: true
+      }
+    }
+  );
+});
+
 // معالج زر الرجوع من لوحة التحكم
 bot.onText(/🔙 رجوع/, async (msg) => {
   logCommand('🔙 Back', msg.from.id, msg.from.username);
@@ -1727,18 +1754,56 @@ bot.on('callback_query', async (query) => {
     
     if (user) {
       await HiddenTask.hide(user.id, taskId);
+      await bot.answerCallbackQuery(query.id, { text: '✅ تم إخفاء المهمة' });
       
-      const lang = user.language || 'ar';
-      const messages = {
-        ar: '✅ تم إخفاء المهمة',
-        en: '✅ Task hidden',
-        ru: '✅ Задача скрыта'
-      };
+      // تحديث قائمة المهام
+      const tasks = await Task.getActiveTasks(user.id);
       
-      await bot.answerCallbackQuery(query.id, { text: messages[lang] });
+      if (tasks.length === 0) {
+        await bot.editMessageText(
+          '❌ لا توجد مهام متاحة حالياً',
+          { chat_id: query.message.chat.id, message_id: query.message.message_id }
+        );
+        return;
+      }
+
+      let message = '📋 المهام المتاحة (مرتبة حسب أعلى مكافأة):\n\n';
+      const keyboard = [];
       
-      // حذف رسالة المهمة
-      await bot.deleteMessage(query.message.chat.id, query.message.message_id);
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+        const isOwner = task.is_owner === 1;
+        
+        message += `${i + 1}. 🤖 ${task.bot_name}`;
+        if (isOwner) {
+          message += ` 👤 (مهمتك)`;
+        }
+        message += `\n`;
+        const exchangeRewardText = {
+          ar: '+1 نقطة تبادل',
+          en: '+1 Exchange Point',
+          ru: '+1 Балл обмена'
+        };
+        const lang = user?.language || 'ar';
+        message += `   💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeRewardText[lang]}\n`;
+        message += `   👥 ${task.completed_count}/${task.required_count}\n\n`;
+        
+        // إضافة أزرار فقط إذا لم يكن صاحب المهمة
+        if (!isOwner) {
+          keyboard.push([
+            { text: `✅ تنفيذ المهمة ${i + 1}`, callback_data: `execute_task_${task.id}` },
+            { text: `❌ إخفاء المهمة ${i + 1}`, callback_data: `hide_task_${task.id}` }
+          ]);
+        }
+      }
+
+      await bot.editMessageText(message, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
     }
     return;
   }

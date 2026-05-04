@@ -269,6 +269,19 @@ export async function handleTaskCreationSteps(bot, msg) {
         await bot.sendMessage(chatId, messages[lang]);
         return true;
       }
+      
+      // التحقق من الحد الأدنى للمكافأة
+      const minReward = await Settings.getMinReward();
+      if (reward < minReward) {
+        const messages = {
+          ar: `❌ الحد الأدنى للمكافأة هو ${minReward} USDT\n\n💡 يمكن للأدمن تغيير هذا الحد من لوحة التحكم`,
+          en: `❌ Minimum reward is ${minReward} USDT\n\n💡 Admin can change this limit from control panel`,
+          ru: `❌ Минимальная награда ${minReward} USDT\n\n💡 Администратор может изменить этот лимит из панели управления`
+        };
+        await bot.sendMessage(chatId, messages[lang]);
+        return true;
+      }
+      
       state.rewardPerUser = reward;
       state.step = 'awaiting_verification_instructions';
       const instructionsMessages = {
@@ -446,6 +459,12 @@ export async function handleViewTasks(bot, msg) {
     ru: '📋 Доступные задачи (отсортированы по наибольшей награде):'
   };
 
+  const yourTaskText = {
+    ar: '(مهمتك)',
+    en: '(your task)',
+    ru: '(ваша задача)'
+  };
+
   const exchangeText = {
     ar: '+1 نقطة تبادل',
     en: '+1 Exchange Point',
@@ -470,23 +489,34 @@ export async function handleViewTasks(bot, msg) {
   // إرسال كل مهمة في رسالة منفصلة
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
+    const isOwner = task.is_owner === 1;
     
-    let message = `${i + 1}. 🤖 ${task.bot_name}\n`;
+    let message = `${i + 1}. 🤖 ${task.bot_name}`;
+    if (isOwner) {
+      message += ` 👤 ${yourTaskText[lang]}`;
+    }
+    message += `\n`;
     message += `💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeText[lang]}\n`;
     message += `👥 ${task.completed_count}/${task.required_count}`;
     
-    const keyboard = {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: executeText[lang], callback_data: `execute_task_${task.id}` },
-            { text: hideText[lang], callback_data: `hide_task_${task.id}` }
+    // إضافة أزرار فقط إذا لم يكن صاحب المهمة
+    if (!isOwner) {
+      const keyboard = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: executeText[lang], callback_data: `execute_task_${task.id}` },
+              { text: hideText[lang], callback_data: `hide_task_${task.id}` }
+            ]
           ]
-        ]
-      }
-    };
-    
-    await bot.sendMessage(chatId, message, keyboard);
+        }
+      };
+      
+      await bot.sendMessage(chatId, message, keyboard);
+    } else {
+      // إرسال بدون أزرار إذا كان صاحب المهمة
+      await bot.sendMessage(chatId, message);
+    }
   }
 }
 

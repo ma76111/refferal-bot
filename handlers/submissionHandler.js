@@ -462,11 +462,19 @@ async function finalizeSubmission(bot, chatId, state) {
 
 
 async function notifyReviewers(bot, submissionId, task, state) {
-  logger.info(`Notifying reviewers about submission ${submissionId}`);
+  logger.info(`Notifying task owner about submission ${submissionId}`);
   
   // الحصول على معلومات المستخدم الذي قدم الإثبات
   const submission = await Submission.getById(submissionId);
   const submitterUser = await User.findByTelegramId(submission.user_telegram_id);
+  
+  // الحصول على صاحب المهمة
+  const taskOwner = await User.findById(task.owner_id);
+  
+  if (!taskOwner || !taskOwner.telegram_id) {
+    logger.error(`Task owner not found for task ${task.id}`);
+    return;
+  }
   
   let message = '🔔 إثبات جديد للمراجعة\n\n';
   message += `🆔 رقم التقديم: ${submissionId}\n`;
@@ -483,25 +491,23 @@ async function notifyReviewers(bot, submissionId, task, state) {
     message += `📸 عدد الصور: ${state.proofImages.length}\n\n`;
   }
 
-  // إرسال للمسؤولين
-  for (const adminId of config.ADMIN_IDS) {
-    try {
-      // إرسال الرسالة مع أزرار المراجعة
-      await bot.sendMessage(adminId, message, reviewKeyboard(submissionId));
-      
-      // إرسال الصور إن وجدت
-      if (state.proofImages.length > 0) {
-        for (const imageId of state.proofImages) {
-          await bot.sendPhoto(adminId, imageId, {
-            caption: `📸 صورة الإثبات - التقديم #${submissionId}`
-          });
-        }
+  // إرسال لصاحب المهمة فقط
+  try {
+    // إرسال الرسالة مع أزرار المراجعة
+    await bot.sendMessage(taskOwner.telegram_id, message, reviewKeyboard(submissionId));
+    
+    // إرسال الصور إن وجدت
+    if (state.proofImages.length > 0) {
+      for (const imageId of state.proofImages) {
+        await bot.sendPhoto(taskOwner.telegram_id, imageId, {
+          caption: `📸 صورة الإثبات - التقديم #${submissionId}`
+        });
       }
-      logger.success(`Admin ${adminId} notified about submission ${submissionId}`);
-    } catch (error) {
-      logger.error(`Failed to notify admin ${adminId}: ${error.message}`);
-      console.error(`Failed to notify admin ${adminId}:`, error);
     }
+    logger.success(`Task owner ${taskOwner.telegram_id} notified about submission ${submissionId}`);
+  } catch (error) {
+    logger.error(`Failed to notify task owner ${taskOwner.telegram_id}: ${error.message}`);
+    console.error(`Failed to notify task owner ${taskOwner.telegram_id}:`, error);
   }
 }
 

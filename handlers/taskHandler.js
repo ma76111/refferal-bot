@@ -4,7 +4,7 @@ import Submission from '../models/Submission.js';
 import Settings from '../models/Settings.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
-import { getTaskTypeKeyboard, getProofTypeKeyboard, cancelKeyboard, mainMenu, adminMenu } from '../utils/keyboards.js';
+import { getTaskTypeKeyboard, getProofTypeKeyboard, cancelKeyboard, mainMenu, adminMenu, getMainMenuKeyboard } from '../utils/keyboards.js';
 
 const userStates = new Map();
 
@@ -678,7 +678,7 @@ export async function handleTaskConfirmation(bot, query) {
       en: '📋 Main Menu:',
       ru: '📋 Главное меню:'
     };
-    await bot.sendMessage(chatId, mainMenuMessages[lang], isAdmin ? adminMenu : mainMenu);
+    await bot.sendMessage(chatId, mainMenuMessages[lang], getMainMenuKeyboard(isAdmin, lang));
     return;
   }
 
@@ -761,7 +761,7 @@ export async function handleTaskConfirmation(bot, query) {
         ru: '📋 Главное меню:'
       };
       
-      await bot.sendMessage(chatId, mainMenuMessages[lang], isAdmin ? adminMenu : mainMenu);
+      await bot.sendMessage(chatId, mainMenuMessages[lang], getMainMenuKeyboard(isAdmin, lang));
 
       userStates.delete(chatId);
     } catch (error) {

@@ -111,4 +111,16 @@ export default class Settings {
     logInfo('SETTINGS', `Setting minimum reward to: ${amount} USDT`);
     return await this.set('min_reward', amount);
   }
+
+  static async getMinWithdrawal() {
+    const value = await this.get('min_withdrawal');
+    const result = value || 0.1; // 0.1 USDT افتراضياً
+    logInfo('SETTINGS', `Minimum withdrawal: ${result} USDT`);
+    return result;
+  }
+
+  static async setMinWithdrawal(amount) {
+    logInfo('SETTINGS', `Setting minimum withdrawal to: ${amount} USDT`);
+    return await this.set('min_withdrawal', amount);
+  }
 }

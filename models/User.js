@@ -187,4 +187,241 @@ export default class User {
       );
     });
   }
+
+  // ===== نظام المخالفات الجديد =====
+
+  // إضافة نقاط مخالفة
+  static addViolationPoints(userId, points) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users 
+         SET violation_points = violation_points + ?, 
+             last_violation_date = CURRENT_TIMESTAMP 
+         WHERE id = ?`,
+        [points, userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  // الحصول على نقاط المخالفات
+  static getViolationPoints(userId) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT violation_points FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row?.violation_points || 0);
+        }
+      );
+    });
+  }
+
+  // تحديث حالة الحظر
+  static updateBanStatus(userId, status, expiresAt = null) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users 
+         SET ban_status = ?, 
+             ban_expires_at = ?,
+             is_banned = ? 
+         WHERE id = ?`,
+        [status, expiresAt, status !== 'none' ? 1 : 0, userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  // الحصول على حالة الحظر
+  static getBanStatus(userId) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT ban_status, ban_expires_at FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+  }
+
+  // إضافة تقييد
+  static addRestriction(userId, restriction) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT restrictions FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          let restrictions = [];
+          if (row?.restrictions) {
+            try {
+              restrictions = JSON.parse(row.restrictions);
+            } catch (e) {
+              restrictions = [];
+            }
+          }
+          
+          if (!restrictions.includes(restriction)) {
+            restrictions.push(restriction);
+          }
+          
+          db.run(
+            'UPDATE users SET restrictions = ? WHERE id = ?',
+            [JSON.stringify(restrictions), userId],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        }
+      );
+    });
+  }
+
+  // إزالة تقييد
+  static removeRestriction(userId, restriction) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT restrictions FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          let restrictions = [];
+          if (row?.restrictions) {
+            try {
+              restrictions = JSON.parse(row.restrictions);
+            } catch (e) {
+              restrictions = [];
+            }
+          }
+          
+          restrictions = restrictions.filter(r => r !== restriction);
+          
+          db.run(
+            'UPDATE users SET restrictions = ? WHERE id = ?',
+            [JSON.stringify(restrictions), userId],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        }
+      );
+    });
+  }
+
+  // الحصول على التقييدات
+  static getRestrictions(userId) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT restrictions FROM users WHERE id = ?',
+        [userId],
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          let restrictions = [];
+          if (row?.restrictions) {
+            try {
+              restrictions = JSON.parse(row.restrictions);
+            } catch (e) {
+              restrictions = [];
+            }
+          }
+          
+          resolve(restrictions);
+        }
+      );
+    });
+  }
+
+  // التحقق من وجود تقييد معين
+  static hasRestriction(userId, restriction) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const restrictions = await this.getRestrictions(userId);
+        resolve(restrictions.includes(restriction));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  // تقليل نقاط المخالفات (إعادة التأهيل)
+  static reduceViolationPoints(userId, points) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users 
+         SET violation_points = CASE 
+           WHEN violation_points - ? < 0 THEN 0 
+           ELSE violation_points - ? 
+         END 
+         WHERE id = ?`,
+        [points, points, userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  // الحصول على جميع المستخدمين
+  static getAll() {
+    return new Promise((resolve, reject) => {
+      db.all(
+        'SELECT * FROM users ORDER BY created_at DESC',
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+  }
+
+  // الحصول على المستخدمين النشطين
+  static getActive() {
+    return new Promise((resolve, reject) => {
+      db.all(
+        'SELECT * FROM users WHERE is_banned = 0 ORDER BY created_at DESC',
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+  }
+
+  // الحصول على المستخدمين المحظورين
+  static getBanned() {
+    return new Promise((resolve, reject) => {
+      db.all(
+        'SELECT * FROM users WHERE is_banned = 1 ORDER BY created_at DESC',
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+  }
 }
+

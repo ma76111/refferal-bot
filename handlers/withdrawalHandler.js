@@ -6,7 +6,6 @@ import { logInfo, logSuccess, logError, logWarning, logCallback } from '../utils
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu } from '../utils/keyboards.js';
 
 const withdrawalStates = new Map();
-const MIN_WITHDRAWAL = 1; // الحد الأدنى للسحب
 
 export async function handleStartWithdrawal(bot, msg) {
   const chatId = msg.chat.id;
@@ -21,21 +20,22 @@ export async function handleStartWithdrawal(bot, msg) {
 
   const balance = await User.getBalance(user.id);
   const lang = user.language || 'ar';
+  const minWithdrawal = await Settings.getMinWithdrawal();
 
-  if (balance < MIN_WITHDRAWAL) {
+  if (balance < minWithdrawal) {
     const messages = {
-      ar: `❌ رصيدك غير كافٍ للسحب\n\n👛 رصيدك الحالي: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${MIN_WITHDRAWAL} USDT`,
-      en: `❌ Insufficient balance for withdrawal\n\n👛 Your current balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${MIN_WITHDRAWAL} USDT`,
-      ru: `❌ Недостаточно средств для вывода\n\n👛 Ваш текущий баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${MIN_WITHDRAWAL} USDT`
+      ar: `❌ رصيدك غير كافٍ للسحب\n\n👛 رصيدك الحالي: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${minWithdrawal} USDT`,
+      en: `❌ Insufficient balance for withdrawal\n\n👛 Your current balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${minWithdrawal} USDT`,
+      ru: `❌ Недостаточно средств для вывода\n\n👛 Ваш текущий баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${minWithdrawal} USDT`
     };
     await bot.sendMessage(chatId, messages[lang]);
     return;
   }
 
   const selectMethodMessages = {
-    ar: `💸 سحب USDT\n\n👛 رصيدك: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${MIN_WITHDRAWAL} USDT\n\nاختر طريقة السحب:`,
-    en: `💸 Withdraw USDT\n\n👛 Your balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${MIN_WITHDRAWAL} USDT\n\nSelect withdrawal method:`,
-    ru: `💸 Вывод USDT\n\n👛 Ваш баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${MIN_WITHDRAWAL} USDT\n\nВыберите способ вывода:`
+    ar: `💸 سحب USDT\n\n👛 رصيدك: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${minWithdrawal} USDT\n\nاختر طريقة السحب:`,
+    en: `💸 Withdraw USDT\n\n👛 Your balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${minWithdrawal} USDT\n\nSelect withdrawal method:`,
+    ru: `💸 Вывод USDT\n\n👛 Ваш баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${minWithdrawal} USDT\n\nВыберите способ вывода:`
   };
 
   await bot.sendMessage(chatId, selectMethodMessages[lang], depositMethodKeyboard);
@@ -50,8 +50,21 @@ export async function handleWithdrawalMethod(bot, query) {
     return;
   }
 
-  const method = query.data === 'withdrawal_binance_id' ? 'binance_id' : 'wallet';
+  // منع استخدام عنوان المحفظة (معطل مؤقتاً)
+  if (query.data === 'withdrawal_wallet' || query.data === 'deposit_wallet') {
+    const lang = user.language || 'ar';
+    const messages = {
+      ar: '⚠️ السحب/الإيداع عبر عنوان المحفظة معطل مؤقتاً\n\nيرجى استخدام Binance Pay ID',
+      en: '⚠️ Withdrawal/Deposit via wallet address is temporarily disabled\n\nPlease use Binance Pay ID',
+      ru: '⚠️ Вывод/Пополнение через адрес кошелька временно отключен\n\nПожалуйста, используйте Binance Pay ID'
+    };
+    await bot.answerCallbackQuery(query.id, { text: messages[lang], show_alert: true });
+    return;
+  }
+
+  const method = query.data === 'withdrawal_binance_id' || query.data === 'deposit_binance_id' ? 'binance_id' : 'wallet';
   const lang = user.language || 'ar';
+  const minWithdrawal = await Settings.getMinWithdrawal();
   logCallback(query.data, query.from.id, query.from.username);
 
   withdrawalStates.set(chatId, {
@@ -64,14 +77,14 @@ export async function handleWithdrawalMethod(bot, query) {
 
   const messages = {
     ar: method === 'binance_id' 
-      ? '💸 السحب عبر Binance Pay ID\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 1):'
-      : '💸 السحب عبر عنوان المحفظة\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 1):',
+      ? `💸 السحب عبر Binance Pay ID\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: ${minWithdrawal}):`
+      : `💸 السحب عبر عنوان المحفظة\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: ${minWithdrawal}):`,
     en: method === 'binance_id'
-      ? '💸 Withdraw via Binance Pay ID\n\n💰 Send amount in USDT (minimum: 1):'
-      : '💸 Withdraw via Wallet Address\n\n💰 Send amount in USDT (minimum: 1):',
+      ? `💸 Withdraw via Binance Pay ID\n\n💰 Send amount in USDT (minimum: ${minWithdrawal}):`
+      : `💸 Withdraw via Wallet Address\n\n💰 Send amount in USDT (minimum: ${minWithdrawal}):`,
     ru: method === 'binance_id'
-      ? '💸 Вывод через Binance Pay ID\n\n💰 Отправьте сумму в USDT (минимум: 1):'
-      : '💸 Вывод через адрес кошелька\n\n💰 Отправьте сумму в USDT (минимум: 1):'
+      ? `💸 Вывод через Binance Pay ID\n\n💰 Отправьте сумму в USDT (минимум: ${minWithdrawal}):`
+      : `💸 Вывод через адрес кошелька\n\n💰 Отправьте сумму в USDT (минимум: ${minWithdrawal}):`
   };
 
   await bot.editMessageText(messages[lang], {
@@ -105,11 +118,13 @@ export async function handleWithdrawalSteps(bot, msg) {
       const amount = parseFloat(msg.text);
       logInfo('WITHDRAWAL', `Amount received: ${amount} USDT from user ${msg.from.id}`);
       
-      if (isNaN(amount) || amount < MIN_WITHDRAWAL) {
+      const minWithdrawal = await Settings.getMinWithdrawal();
+      
+      if (isNaN(amount) || amount < minWithdrawal) {
         const messages = {
-          ar: `❌ المبلغ غير صحيح. الحد الأدنى: ${MIN_WITHDRAWAL} USDT`,
-          en: `❌ Invalid amount. Minimum: ${MIN_WITHDRAWAL} USDT`,
-          ru: `❌ Неверная сумма. Минимум: ${MIN_WITHDRAWAL} USDT`
+          ar: `❌ المبلغ غير صحيح. الحد الأدنى: ${minWithdrawal} USDT`,
+          en: `❌ Invalid amount. Minimum: ${minWithdrawal} USDT`,
+          ru: `❌ Неверная сумма. Минимум: ${minWithdrawal} USDT`
         };
         await bot.sendMessage(chatId, messages[lang]);
         return true;

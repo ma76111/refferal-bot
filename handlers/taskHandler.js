@@ -86,11 +86,37 @@ export async function handleTaskType(bot, query) {
 
   const t = taskTypeTexts[lang];
   const selectedType = taskType === 'paid' ? t.paid : t.exchange;
+  const message = `✅ ${t.selected}: ${selectedType}\n\n📝 ${t.sendBotName}:`;
 
-  await bot.editMessageText(
-    `✅ ${t.selected}: ${selectedType}\n\n📝 ${t.sendBotName}:`,
-    { chat_id: chatId, message_id: query.message.message_id }
-  );
+  try {
+    await bot.editMessageText(message, { 
+      chat_id: chatId, 
+      message_id: query.message.message_id,
+      reply_markup: { inline_keyboard: [] }
+    });
+  } catch (error) {
+    // معالجة أخطاء Telegram API
+    if (error.response && error.response.body) {
+      const errorDesc = error.response.body.description || '';
+      
+      // إذا كانت الرسالة محذوفة أو نفس المحتوى، نرسل رسالة جديدة
+      if (errorDesc.includes('message to edit not found') || 
+          errorDesc.includes('message is not modified')) {
+        logger.warning(`Cannot edit message, sending new one: ${errorDesc}`);
+        await bot.sendMessage(chatId, message, cancelKeyboard);
+      } else {
+        // خطأ آخر، نسجله ونرسل رسالة جديدة
+        logger.error(`Error editing message: ${errorDesc}`);
+        await bot.sendMessage(chatId, message, cancelKeyboard);
+      }
+    } else {
+      // خطأ غير متوقع
+      logger.error(`Unexpected error in handleTaskType: ${error.message}`);
+      await bot.sendMessage(chatId, message, cancelKeyboard);
+    }
+  }
+  
+  await bot.answerCallbackQuery(query.id);
 }
 
 export async function handleTaskCreationSteps(bot, msg) {
@@ -187,22 +213,9 @@ export async function handleTaskCreationSteps(bot, msg) {
           return true;
         }
       }
-      // التحقق من معامل start إذا كان موجوداً
-      const startMatch = msg.text.match(/[?&]start=([^&]+)/);
-      if (startMatch && startMatch[1]) {
-        const startParam = startMatch[1];
-        // التحقق من أن معامل start ليس رقماً بالكامل
-        if (/^\d+$/.test(startParam)) {
-          logger.warning(`Start parameter is numbers only: ${startParam}`);
-          const messages = {
-            ar: '❌ معامل الإحالة (start) لا يمكن أن يكون رقماً فقط\n\nمثال صحيح: https://t.me/bot?start=REF123\n❌ خطأ: https://t.me/bot?start=3292009159',
-            en: '❌ Referral parameter (start) cannot be only numbers\n\nCorrect: https://t.me/bot?start=REF123\n❌ Wrong: https://t.me/bot?start=3292009159',
-            ru: '❌ Реферальный параметр (start) не может быть только цифрами\n\nПравильно: https://t.me/bot?start=REF123\n❌ Неправильно: https://t.me/bot?start=3292009159'
-          };
-          await bot.sendMessage(chatId, messages[lang]);
-          return true;
-        }
-      }
+      // ملاحظة: معامل start يمكن أن يكون أي شيء (نص، أرقام، أو مزيج)
+      // العديد من البوتات تستخدم معرفات المستخدمين (أرقام) كمعامل إحالة
+      // لذلك لا نقوم بفحص محتوى معامل start
       state.referralLink = msg.text;
       state.step = 'awaiting_required_count';
       const maxCount = await Settings.getMaxRequiredCount();
@@ -282,7 +295,38 @@ export async function handleTaskCreationSteps(bot, msg) {
         return true;
       }
       
+      // حساب التكلفة الإجمالية للمهمة
+      const totalCost = reward * state.requiredCount;
+      
+      // الحصول على رصيد المستخدم الحالي
+      const user = await User.findById(state.userId);
+      if (!user) {
+        logger.error(`User ${state.userId} not found`);
+        const messages = {
+          ar: '❌ حدث خطأ، الرجاء المحاولة مرة أخرى',
+          en: '❌ An error occurred, please try again',
+          ru: '❌ Произошла ошибка, попробуйте еще раз'
+        };
+        await bot.sendMessage(chatId, messages[lang]);
+        return true;
+      }
+      
+      // التحقق من أن المستخدم يملك رصيد كافي
+      if (user.balance < totalCost) {
+        logger.warning(`User ${state.userId} has insufficient balance: ${user.balance} < ${totalCost}`);
+        const messages = {
+          ar: `❌ رصيدك غير كافٍ لإنشاء هذه المهمة\n\n💰 رصيدك الحالي: ${user.balance.toFixed(2)} USDT\n📊 التكلفة المطلوبة: ${totalCost.toFixed(2)} USDT\n💡 المطلوب: ${(totalCost - user.balance).toFixed(2)} USDT إضافية\n\n🔄 يمكنك إيداع المزيد من الأموال أو تقليل عدد الأشخاص/المكافأة`,
+          en: `❌ Your balance is insufficient to create this task\n\n💰 Your current balance: ${user.balance.toFixed(2)} USDT\n📊 Required cost: ${totalCost.toFixed(2)} USDT\n💡 Needed: ${(totalCost - user.balance).toFixed(2)} USDT more\n\n🔄 You can deposit more funds or reduce the number of people/reward`,
+          ru: `❌ Ваш баланс недостаточен для создания этой задачи\n\n💰 Ваш текущий баланс: ${user.balance.toFixed(2)} USDT\n📊 Требуемая стоимость: ${totalCost.toFixed(2)} USDT\n💡 Необходимо: ${(totalCost - user.balance).toFixed(2)} USDT дополнительно\n\n🔄 Вы можете внести больше средств или уменьшить количество людей/награду`
+        };
+        await bot.sendMessage(chatId, messages[lang]);
+        return true;
+      }
+      
+      logger.success(`User ${state.userId} has sufficient balance: ${user.balance} >= ${totalCost}`);
+      
       state.rewardPerUser = reward;
+      state.totalCost = totalCost;
       state.step = 'awaiting_verification_instructions';
       const instructionsMessages = {
         ar: '📋 أرسل تعليمات التحقق:',
@@ -361,6 +405,9 @@ export async function handleProofType(bot, query) {
       exchange: 'تبادل إحالات',
       reward: 'المكافأة لكل شخص',
       exchangePoint: '+1 نقطة تبادل',
+      totalCost: 'التكلفة الإجمالية',
+      yourBalance: 'رصيدك الحالي',
+      remaining: 'الرصيد المتبقي',
       instructions: 'التعليمات',
       proofType: 'نوع الإثبات',
       question: '\n❓ هل تريد إنشاء هذه المهمة؟',
@@ -377,6 +424,9 @@ export async function handleProofType(bot, query) {
       exchange: 'Referral exchange',
       reward: 'Reward per person',
       exchangePoint: '+1 Exchange Point',
+      totalCost: 'Total cost',
+      yourBalance: 'Your current balance',
+      remaining: 'Remaining balance',
       instructions: 'Instructions',
       proofType: 'Proof type',
       question: '\n❓ Do you want to create this task?',
@@ -393,6 +443,9 @@ export async function handleProofType(bot, query) {
       exchange: 'Обмен рефералами',
       reward: 'Награда за человека',
       exchangePoint: '+1 Балл обмена',
+      totalCost: 'Общая стоимость',
+      yourBalance: 'Ваш текущий баланс',
+      remaining: 'Остаток баланса',
       instructions: 'Инструкции',
       proofType: 'Тип доказательства',
       question: '\n❓ Вы хотите создать эту задачу?',
@@ -412,20 +465,78 @@ export async function handleProofType(bot, query) {
   message += `👥 ${t.required}: ${state.requiredCount}\n`;
   message += `📊 ${t.type}: ${taskTypeText}\n`;
   message += `💰 ${t.reward}: ${rewardText}\n`;
+  
+  // إضافة معلومات التكلفة والرصيد للمهام المدفوعة
+  if (state.taskType === 'paid') {
+    const totalCost = state.rewardPerUser * state.requiredCount;
+    const user = await User.findById(state.userId);
+    if (user) {
+      const remainingBalance = user.balance - totalCost;
+      message += `💸 ${t.totalCost}: ${totalCost.toFixed(2)} USDT\n`;
+      message += `💰 ${t.yourBalance}: ${user.balance.toFixed(2)} USDT\n`;
+      message += `📊 ${t.remaining}: ${remainingBalance.toFixed(2)} USDT\n`;
+    }
+  }
+  
   message += `📸 ${t.proofType}: ${proofText}\n\n`;
   message += `📝 ${t.instructions}:\n${state.verificationInstructions}`;
   message += t.question;
 
-  await bot.editMessageText(message, {
-    chat_id: chatId,
-    message_id: query.message.message_id,
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: t.confirm, callback_data: 'confirm_create_task' }],
-        [{ text: t.cancel, callback_data: 'cancel_create_task' }]
-      ]
+  try {
+    await bot.editMessageText(message, {
+      chat_id: chatId,
+      message_id: query.message.message_id,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: t.confirm, callback_data: 'confirm_create_task' }],
+          [{ text: t.cancel, callback_data: 'cancel_create_task' }]
+        ]
+      }
+    });
+  } catch (error) {
+    // معالجة أخطاء Telegram API
+    if (error.response && error.response.body) {
+      const errorDesc = error.response.body.description || '';
+      
+      // إذا كانت الرسالة محذوفة أو نفس المحتوى، نرسل رسالة جديدة
+      if (errorDesc.includes('message to edit not found') || 
+          errorDesc.includes('message is not modified')) {
+        logger.warning(`Cannot edit message, sending new one: ${errorDesc}`);
+        await bot.sendMessage(chatId, message, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: t.confirm, callback_data: 'confirm_create_task' }],
+              [{ text: t.cancel, callback_data: 'cancel_create_task' }]
+            ]
+          }
+        });
+      } else {
+        // خطأ آخر، نسجله ونرسل رسالة جديدة
+        logger.error(`Error editing message: ${errorDesc}`);
+        await bot.sendMessage(chatId, message, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: t.confirm, callback_data: 'confirm_create_task' }],
+              [{ text: t.cancel, callback_data: 'cancel_create_task' }]
+            ]
+          }
+        });
+      }
+    } else {
+      // خطأ غير متوقع
+      logger.error(`Unexpected error in handleProofType: ${error.message}`);
+      await bot.sendMessage(chatId, message, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t.confirm, callback_data: 'confirm_create_task' }],
+            [{ text: t.cancel, callback_data: 'cancel_create_task' }]
+          ]
+        }
+      });
     }
-  });
+  }
+  
+  await bot.answerCallbackQuery(query.id);
 }
 
 export async function handleViewTasks(bot, msg) {
@@ -658,6 +769,10 @@ export async function handleTaskConfirmation(bot, query) {
   if (query.data === 'cancel_create_task') {
     userStates.delete(chatId);
     
+    // الحصول على لغة المستخدم الحالية من قاعدة البيانات
+    const user = await User.findByTelegramId(query.from.id);
+    const lang = user?.language || 'ar';
+    
     const cancelMessages = {
       ar: '❌ تم إلغاء إنشاء المهمة',
       en: '❌ Task creation cancelled',
@@ -686,6 +801,33 @@ export async function handleTaskConfirmation(bot, query) {
     try {
       logger.info(`Creating task: ${state.botName} (${state.taskType})`);
       
+      // إذا كانت مهمة مدفوعة، خصم المبلغ من رصيد المستخدم
+      if (state.taskType === 'paid') {
+        const totalCost = state.totalCost || (state.rewardPerUser * state.requiredCount);
+        
+        // التحقق مرة أخرى من الرصيد قبل الخصم (للأمان)
+        const user = await User.findById(state.userId);
+        if (!user || user.balance < totalCost) {
+          logger.error(`User ${state.userId} has insufficient balance at confirmation`);
+          const messages = {
+            ar: '❌ رصيدك غير كافٍ لإنشاء هذه المهمة',
+            en: '❌ Your balance is insufficient to create this task',
+            ru: '❌ Ваш баланс недостаточен для создания этой задачи'
+          };
+          await bot.editMessageText(messages[state.lang || 'ar'], {
+            chat_id: chatId,
+            message_id: query.message.message_id
+          });
+          await bot.answerCallbackQuery(query.id, { text: '❌' });
+          userStates.delete(chatId);
+          return;
+        }
+        
+        // خصم المبلغ من رصيد المستخدم
+        await User.updateBalance(state.userId, -totalCost);
+        logger.success(`Deducted ${totalCost} USDT from user ${state.userId} balance`);
+      }
+      
       const taskId = await Task.create({
         ownerId: state.userId,
         botName: state.botName,
@@ -699,6 +841,10 @@ export async function handleTaskConfirmation(bot, query) {
 
       logger.success(`Task created successfully with ID: ${taskId}`);
 
+      // الحصول على لغة المستخدم الحالية من قاعدة البيانات
+      const user = await User.findByTelegramId(query.from.id);
+      const lang = user?.language || 'ar';
+      
       // التحقق من أن المستخدم أدمن
       const isAdmin = config.ADMIN_IDS.includes(query.from.id);
 
@@ -710,6 +856,8 @@ export async function handleTaskConfirmation(bot, query) {
           reward: 'المكافأة',
           exchange: '+1 نقطة تبادل',
           taskId: 'رقم المهمة',
+          deducted: 'تم خصم',
+          newBalance: 'رصيدك الجديد',
           backButton: 'رجوع للقائمة الرئيسية'
         },
         en: {
@@ -719,6 +867,8 @@ export async function handleTaskConfirmation(bot, query) {
           reward: 'Reward',
           exchange: '+1 Exchange Point',
           taskId: 'Task ID',
+          deducted: 'Deducted',
+          newBalance: 'Your new balance',
           backButton: 'Back to main menu'
         },
         ru: {
@@ -728,6 +878,8 @@ export async function handleTaskConfirmation(bot, query) {
           reward: 'Награда',
           exchange: '+1 Балл обмена',
           taskId: 'ID задачи',
+          deducted: 'Списано',
+          newBalance: 'Ваш новый баланс',
           backButton: 'Вернуться в главное меню'
         }
       };
@@ -735,22 +887,28 @@ export async function handleTaskConfirmation(bot, query) {
       const t = successMessages[lang];
       const rewardText = state.taskType === 'paid' ? `${state.rewardPerUser} USDT` : t.exchange;
 
-      await bot.editMessageText(
-        `✅ ${t.created}!\n\n` +
+      let message = `✅ ${t.created}!\n\n` +
         `🤖 ${t.bot}: ${state.botName}\n` +
         `👥 ${t.required}: ${state.requiredCount}\n` +
         `💰 ${t.reward}: ${rewardText}\n` +
-        `🆔 ${t.taskId}: ${taskId}`,
-        { 
-          chat_id: chatId, 
-          message_id: query.message.message_id,
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: `🔙 ${t.backButton}`, callback_data: 'back_to_menu' }]
-            ]
-          }
+        `🆔 ${t.taskId}: ${taskId}`;
+      
+      // إضافة معلومات الخصم إذا كانت مهمة مدفوعة
+      if (state.taskType === 'paid') {
+        const totalCost = state.totalCost || (state.rewardPerUser * state.requiredCount);
+        const updatedUser = await User.findById(state.userId);
+        message += `\n\n💸 ${t.deducted}: ${totalCost.toFixed(2)} USDT\n💰 ${t.newBalance}: ${updatedUser.balance.toFixed(2)} USDT`;
+      }
+
+      await bot.editMessageText(message, { 
+        chat_id: chatId, 
+        message_id: query.message.message_id,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `🔙 ${t.backButton}`, callback_data: 'back_to_menu' }]
+          ]
         }
-      );
+      });
 
       await bot.answerCallbackQuery(query.id, { text: '✅' });
 
@@ -765,6 +923,10 @@ export async function handleTaskConfirmation(bot, query) {
 
       userStates.delete(chatId);
     } catch (error) {
+      // الحصول على لغة المستخدم الحالية من قاعدة البيانات في حالة الخطأ
+      const user = await User.findByTelegramId(query.from.id);
+      const lang = user?.language || 'ar';
+      
       const errorMessages = {
         ar: '❌ حدث خطأ أثناء إنشاء المهمة',
         en: '❌ Error occurred while creating task',

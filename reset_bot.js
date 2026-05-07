@@ -13,10 +13,16 @@ const rl = readline.createInterface({
 
 console.log('╔════════════════════════════════════════════════════════════╗');
 console.log('║         🔄 سكريبت إعادة تعيين البوت بالكامل            ║');
+console.log('║                    الإصدار 2.1                          ║');
 console.log('╚════════════════════════════════════════════════════════════╝\n');
 
 console.log('⚠️  تحذير: هذا السكريبت سيحذف:\n');
-console.log('   ❌ قاعدة البيانات (bot.db)');
+console.log('   ❌ قاعدة البيانات (bot.db) - جميع الجداول');
+console.log('      • المستخدمون والمهام');
+console.log('      • الإثباتات والتقييمات');
+console.log('      • الإيداعات والسحوبات');
+console.log('      • المخالفات والحظر');
+console.log('      • الرسائل الجماعية والاستئنافات');
 console.log('   ❌ جميع ملفات السجلات (*.log)');
 console.log('   ❌ ملفات التوثيق الإضافية');
 console.log('   ❌ ملفات الاختبار والـ migration');
@@ -26,6 +32,9 @@ console.log('✅ سيتم الاحتفاظ بـ:\n');
 console.log('   ✓ الكود المصدري');
 console.log('   ✓ ملف .env (الإعدادات)');
 console.log('   ✓ ملف README.md');
+console.log('   ✓ ملف VIOLATION_SYSTEM.md');
+console.log('   ✓ ملف NEW_FEATURES.md');
+console.log('   ✓ ملف INTEGRATION_GUIDE.md');
 console.log('   ✓ ملف .gitignore\n');
 
 rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ (اكتب "نعم" للتأكيد): ', (answer) => {
@@ -61,12 +70,19 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
     console.log('⚠️  لا توجد ملفات سجلات');
   }
 
-  // 3. حذف ملفات التوثيق الإضافية (ما عدا README.md و GITHUB_SETUP.md)
+  // 3. حذف ملفات التوثيق الإضافية (ما عدا الملفات المهمة)
+  const keepMdFiles = [
+    'README.md',
+    'GITHUB_SETUP.md',
+    'VIOLATION_SYSTEM.md',
+    'NEW_FEATURES.md',
+    'INTEGRATION_GUIDE.md'
+  ];
+  
   const mdFiles = fs.readdirSync(__dirname).filter(file => 
-    file.endsWith('.md') && 
-    file !== 'README.md' && 
-    file !== 'GITHUB_SETUP.md'
+    file.endsWith('.md') && !keepMdFiles.includes(file)
   );
+  
   if (mdFiles.length > 0) {
     mdFiles.forEach(file => {
       fs.unlinkSync(path.join(__dirname, file));
@@ -124,7 +140,31 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
   console.log('   3️⃣  سيتم إنشاء قاعدة بيانات جديدة تلقائياً');
   console.log('   4️⃣  البوت جاهز للاستخدام!\n');
 
+  console.log('📚 الجداول التي سيتم إنشاؤها تلقائياً:\n');
+  console.log('   ✓ users - المستخدمون');
+  console.log('   ✓ tasks - المهام');
+  console.log('   ✓ task_submissions - الإثباتات');
+  console.log('   ✓ deposits - الإيداعات');
+  console.log('   ✓ withdrawals - السحوبات');
+  console.log('   ✓ reports - الإبلاغات');
+  console.log('   ✓ violations - المخالفات');
+  console.log('   ✓ bans - الحظر');
+  console.log('   ✓ restrictions - التقييدات');
+  console.log('   ✓ appeals - الاستئنافات');
+  console.log('   ✓ ratings - التقييمات (جديد)');
+  console.log('   ✓ broadcasts - الرسائل الجماعية (جديد)');
+  console.log('   ✓ settings - الإعدادات');
+  console.log('   ✓ hidden_tasks - المهام المخفية\n');
+
   console.log('💡 ملاحظة: يمكنك الآن البدء من جديد بدون أي بيانات قديمة\n');
+  console.log('🎉 الإصدار 2.0 يتضمن:\n');
+  console.log('   • نظام الإحصائيات 📊');
+  console.log('   • نظام التقييمات ⭐');
+  console.log('   • نظام الرسائل الجماعية 📢');
+  console.log('   • نظام الاستئناف 📝');
+  console.log('   • نظام المخالفات والحظر المتقدم 🚫');
+  console.log('   • فحص الرصيد قبل إنشاء المهام المدفوعة 💰');
+  console.log('   • قبول روابط الإحالة بمعاملات رقمية ✅\n');
 
   rl.close();
 });

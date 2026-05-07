@@ -38,29 +38,46 @@ export async function handleDepositMethod(bot, query) {
     return;
   }
 
+  // منع استخدام عنوان المحفظة (معطل مؤقتاً)
+  if (query.data === 'deposit_wallet') {
+    const lang = user.language || 'ar';
+    const messages = {
+      ar: '⚠️ الإيداع عبر عنوان المحفظة معطل مؤقتاً\n\nيرجى استخدام Binance Pay ID',
+      en: '⚠️ Deposit via wallet address is temporarily disabled\n\nPlease use Binance Pay ID',
+      ru: '⚠️ Пополнение через адрес кошелька временно отключено\n\nПожалуйста, используйте Binance Pay ID'
+    };
+    await bot.answerCallbackQuery(query.id, { text: messages[lang], show_alert: true });
+    return;
+  }
+
   const method = query.data === 'deposit_binance_id' ? 'binance_id' : 'wallet';
+  const lang = user.language || 'ar';
   logger.callback(`Deposit method selected: ${method} by user ${query.from.id}`);
 
   depositStates.set(chatId, {
     userId: user.id,
     telegramId: query.from.id,
     method,
-    step: 'awaiting_amount'
+    step: 'awaiting_amount',
+    lang
   });
 
-  if (method === 'binance_id') {
-    await bot.editMessageText(
-      '💳 الإيداع عبر Binance Pay ID\n\n' +
-      '💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 0.1):',
-      { chat_id: chatId, message_id: query.message.message_id }
-    );
-  } else {
-    await bot.editMessageText(
-      '💳 الإيداع عبر عنوان المحفظة\n\n' +
-      '💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 0.1):',
-      { chat_id: chatId, message_id: query.message.message_id }
-    );
-  }
+  const messages = {
+    ar: method === 'binance_id'
+      ? '💳 الإيداع عبر Binance Pay ID\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 0.1):'
+      : '💳 الإيداع عبر عنوان المحفظة\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: 0.1):',
+    en: method === 'binance_id'
+      ? '💳 Deposit via Binance Pay ID\n\n💰 Send amount in USDT (minimum: 0.1):'
+      : '💳 Deposit via Wallet Address\n\n💰 Send amount in USDT (minimum: 0.1):',
+    ru: method === 'binance_id'
+      ? '💳 Пополнение через Binance Pay ID\n\n💰 Отправьте сумму в USDT (минимум: 0.1):'
+      : '💳 Пополнение через адрес кошелька\n\n💰 Отправьте сумму в USDT (минимум: 0.1):'
+  };
+
+  await bot.editMessageText(messages[lang], {
+    chat_id: chatId,
+    message_id: query.message.message_id
+  });
 }
 
 export async function handleDepositSteps(bot, msg) {

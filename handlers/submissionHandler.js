@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import Submission from '../models/Submission.js';
 import Settings from '../models/Settings.js';
 import Report from '../models/Report.js';
+import ViolationSystem from '../utils/violationSystem.js';
+import { VIOLATION_TYPES } from '../models/Violation.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 import { cancelKeyboard, mainMenu, reviewKeyboard, getRejectKeyboard, getReportKeyboard } from '../utils/keyboards.js';
@@ -559,11 +561,46 @@ export async function handleReview(bot, query) {
     await Submission.clearProofImages(submissionId);
     logger.success(`Proof images cleared for accepted submission ${submissionId}`);
 
+    const user = await User.findById(submission.user_id);
+    const lang = user?.language || 'ar';
+    
+    const acceptMessages = {
+      ar: `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'تم احتساب إحالة'}`,
+      en: `✅ Your proof has been accepted!\n\n🆔 Submission ID: ${submissionId}\n💰 Reward: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Referral counted'}`,
+      ru: `✅ Ваше доказательство принято!\n\n🆔 ID заявки: ${submissionId}\n💰 Награда: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Реферал засчитан'}`
+    };
+
     // إشعار المستخدم
-    await bot.sendMessage(
-      submission.user_telegram_id,
-      `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'تم احتساب إحالة'}`
-    );
+    await bot.sendMessage(submission.user_telegram_id, acceptMessages[lang]);
+
+    // إرسال زر التقييم لصاحب المهمة
+    const taskOwner = await User.findById(task.owner_id);
+    const ownerLang = taskOwner?.language || 'ar';
+    
+    const ratingMessages = {
+      ar: `✅ تم قبول إثبات المستخدم @${user.username || 'مستخدم'}\n\n💡 يمكنك الآن تقييم أداء المستخدم`,
+      en: `✅ User @${user.username || 'user'}'s proof has been accepted\n\n💡 You can now rate the user's performance`,
+      ru: `✅ Доказательство пользователя @${user.username || 'пользователь'} принято\n\n💡 Теперь вы можете оценить работу пользователя`
+    };
+    
+    const ratingButtonTexts = {
+      ar: '⭐ تقييم المستخدم',
+      en: '⭐ Rate User',
+      ru: '⭐ Оценить пользователя'
+    };
+    
+    const ratingKeyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ 
+            text: ratingButtonTexts[ownerLang], 
+            callback_data: `rate_user_${submission.task_id}_${submission.user_id}` 
+          }]
+        ]
+      }
+    };
+
+    await bot.sendMessage(taskOwner.telegram_id, ratingMessages[ownerLang], ratingKeyboard);
 
     await bot.editMessageText(
       query.message.text + '\n\n✅ تم القبول',
@@ -604,11 +641,20 @@ export async function handleReview(bot, query) {
 
     await bot.answerCallbackQuery(query.id);
     
+    // الحصول على لغة المراجع
+    const lang = reviewer?.language || 'ar';
+    
     // عرض خيارات الرفض
+    const rejectMessages = {
+      ar: `❓ اختر نوع الرفض للتقديم #${submissionId}:`,
+      en: `❓ Choose rejection type for submission #${submissionId}:`,
+      ru: `❓ Выберите тип отклонения для заявки #${submissionId}:`
+    };
+    
     await bot.sendMessage(
       query.message.chat.id,
-      `❓ اختر نوع الرفض للتقديم #${submissionId}:`,
-      getRejectKeyboard(submissionId)
+      rejectMessages[lang],
+      getRejectKeyboard(submissionId, lang)
     );
     return;
   }
@@ -617,6 +663,10 @@ export async function handleReview(bot, query) {
   if (data.startsWith('reject_retry_')) {
     const submissionId = parseInt(data.split('_')[2]);
     
+    // الحصول على لغة المراجع
+    const reviewer = await User.findByTelegramId(reviewerId);
+    const lang = reviewer?.language || 'ar';
+    
     // حفظ حالة الرفض وانتظار الرسالة
     rejectStates.set(query.message.chat.id, {
       submissionId,
@@ -624,13 +674,25 @@ export async function handleReview(bot, query) {
       reviewerId
     });
 
+    const messages = {
+      ar: `📝 أرسل رسالة للمستخدم توضح سبب الرفض وكيف يمكنه تحسين الإثبات:\n\n(سيتم إرسال الرسالة للمستخدم مع إمكانية إعادة المحاولة)`,
+      en: `📝 Send a message to the user explaining the rejection reason and how they can improve the proof:\n\n(The message will be sent to the user with the ability to retry)`,
+      ru: `📝 Отправьте сообщение пользователю с объяснением причины отклонения и как можно улучшить доказательство:\n\n(Сообщение будет отправлено пользователю с возможностью повторной попытки)`
+    };
+    
+    const cancelTexts = {
+      ar: '❌ إلغاء',
+      en: '❌ Cancel',
+      ru: '❌ Отмена'
+    };
+
     await bot.answerCallbackQuery(query.id);
     await bot.sendMessage(
       query.message.chat.id,
-      `📝 أرسل رسالة للمستخدم توضح سبب الرفض وكيف يمكنه تحسين الإثبات:\n\n(سيتم إرسال الرسالة للمستخدم مع إمكانية إعادة المحاولة)`,
+      messages[lang],
       {
         reply_markup: {
-          keyboard: [['❌ إلغاء']],
+          keyboard: [[cancelTexts[lang]]],
           resize_keyboard: true
         }
       }
@@ -642,6 +704,10 @@ export async function handleReview(bot, query) {
   if (data.startsWith('reject_final_')) {
     const submissionId = parseInt(data.split('_')[2]);
     
+    // الحصول على لغة المراجع
+    const reviewer = await User.findByTelegramId(reviewerId);
+    const lang = reviewer?.language || 'ar';
+    
     // حفظ حالة الرفض وانتظار الرسالة
     rejectStates.set(query.message.chat.id, {
       submissionId,
@@ -649,13 +715,25 @@ export async function handleReview(bot, query) {
       reviewerId
     });
 
+    const messages = {
+      ar: `📝 أرسل رسالة للمستخدم توضح سبب الرفض النهائي:\n\n(سيتم إرسال الرسالة للمستخدم مع إمكانية الإبلاغ عن صاحب المهمة)`,
+      en: `📝 Send a message to the user explaining the final rejection reason:\n\n(The message will be sent to the user with the ability to report the task owner)`,
+      ru: `📝 Отправьте сообщение пользователю с объяснением причины окончательного отклонения:\n\n(Сообщение будет отправлено пользователю с возможностью пожаловаться на владельца задачи)`
+    };
+    
+    const cancelTexts = {
+      ar: '❌ إلغاء',
+      en: '❌ Cancel',
+      ru: '❌ Отмена'
+    };
+
     await bot.answerCallbackQuery(query.id);
     await bot.sendMessage(
       query.message.chat.id,
-      `📝 أرسل رسالة للمستخدم توضح سبب الرفض النهائي:\n\n(سيتم إرسال الرسالة للمستخدم مع إمكانية الإبلاغ عن صاحب المهمة)`,
+      messages[lang],
       {
         reply_markup: {
-          keyboard: [['❌ إلغاء']],
+          keyboard: [[cancelTexts[lang]]],
           resize_keyboard: true
         }
       }
@@ -693,10 +771,22 @@ export async function handleRejectMessage(bot, msg) {
   
   if (!state) return false;
 
+  // الحصول على لغة المراجع
+  const reviewer = await User.findByTelegramId(state.reviewerId);
+  const reviewerLang = reviewer?.language || 'ar';
+
   // معالجة زر الإلغاء
-  if (msg.text === '❌ إلغاء') {
+  const cancelTexts = ['❌ إلغاء', '❌ Cancel', '❌ Отмена'];
+  if (cancelTexts.includes(msg.text)) {
     rejectStates.delete(chatId);
-    await bot.sendMessage(chatId, '❌ تم إلغاء العملية');
+    
+    const messages = {
+      ar: '❌ تم إلغاء العملية',
+      en: '❌ Operation cancelled',
+      ru: '❌ Операция отменена'
+    };
+    
+    await bot.sendMessage(chatId, messages[reviewerLang]);
     return true;
   }
 
@@ -707,12 +797,21 @@ export async function handleRejectMessage(bot, msg) {
     const submission = await Submission.getById(submissionId);
     
     if (!submission) {
-      await bot.sendMessage(chatId, '❌ التقديم غير موجود');
+      const messages = {
+        ar: '❌ التقديم غير موجود',
+        en: '❌ Submission not found',
+        ru: '❌ Заявка не найдена'
+      };
+      await bot.sendMessage(chatId, messages[reviewerLang]);
       rejectStates.delete(chatId);
       return true;
     }
 
     const user = await User.findByTelegramId(reviewerId);
+    
+    // الحصول على لغة المستخدم الذي قدم الإثبات
+    const submitter = await User.findByTelegramId(submission.user_telegram_id);
+    const submitterLang = submitter?.language || 'ar';
     
     // تحديث حالة التقديم
     await Submission.updateStatus(submissionId, 'reject', user.id);
@@ -729,17 +828,36 @@ export async function handleRejectMessage(bot, msg) {
       
       const timeoutMinutes = Math.floor(improvementTimeout / 60);
       
-      await bot.sendMessage(
-        submission.user_telegram_id,
-        `⚠️ تم رفض إثباتك مع إمكانية إعادة المحاولة\n\n` +
-        `🆔 رقم التقديم: ${submissionId}\n` +
-        `🤖 المهمة: ${submission.bot_name}\n\n` +
-        `📝 سبب الرفض:\n${rejectMessage}\n\n` +
-        `💡 يمكنك تحسين الإثبات والمحاولة مرة أخرى\n` +
-        `⏰ المهلة المتاحة: ${timeoutMinutes} دقيقة`
-      );
+      const userMessages = {
+        ar: `⚠️ تم رفض إثباتك مع إمكانية إعادة المحاولة\n\n` +
+            `🆔 رقم التقديم: ${submissionId}\n` +
+            `🤖 المهمة: ${submission.bot_name}\n\n` +
+            `📝 سبب الرفض:\n${rejectMessage}\n\n` +
+            `💡 يمكنك تحسين الإثبات والمحاولة مرة أخرى\n` +
+            `⏰ المهلة المتاحة: ${timeoutMinutes} دقيقة`,
+        en: `⚠️ Your proof was rejected with the ability to retry\n\n` +
+            `🆔 Submission ID: ${submissionId}\n` +
+            `🤖 Task: ${submission.bot_name}\n\n` +
+            `📝 Rejection reason:\n${rejectMessage}\n\n` +
+            `💡 You can improve the proof and try again\n` +
+            `⏰ Available time: ${timeoutMinutes} minutes`,
+        ru: `⚠️ Ваше доказательство было отклонено с возможностью повторной попытки\n\n` +
+            `🆔 ID заявки: ${submissionId}\n` +
+            `🤖 Задача: ${submission.bot_name}\n\n` +
+            `📝 Причина отклонения:\n${rejectMessage}\n\n` +
+            `💡 Вы можете улучшить доказательство и попробовать снова\n` +
+            `⏰ Доступное время: ${timeoutMinutes} минут`
+      };
+      
+      await bot.sendMessage(submission.user_telegram_id, userMessages[submitterLang]);
 
-      await bot.sendMessage(chatId, `✅ تم رفض التقديم #${submissionId} مع إعطاء فرصة ثانية (مهلة: ${timeoutMinutes} دقيقة)`);
+      const reviewerMessages = {
+        ar: `✅ تم رفض التقديم #${submissionId} مع إعطاء فرصة ثانية (مهلة: ${timeoutMinutes} دقيقة)`,
+        en: `✅ Submission #${submissionId} rejected with second chance (deadline: ${timeoutMinutes} minutes)`,
+        ru: `✅ Заявка #${submissionId} отклонена с повторной попыткой (срок: ${timeoutMinutes} минут)`
+      };
+      
+      await bot.sendMessage(chatId, reviewerMessages[reviewerLang]);
     } else {
       // رفض نهائي - حذف الصور من قاعدة البيانات
       await Submission.clearProofImages(submissionId);
@@ -747,24 +865,51 @@ export async function handleRejectMessage(bot, msg) {
       
       const taskOwner = await Submission.getTaskOwner(submissionId);
       
+      const userMessages = {
+        ar: `❌ تم رفض إثباتك بشكل نهائي\n\n` +
+            `🆔 رقم التقديم: ${submissionId}\n` +
+            `🤖 المهمة: ${submission.bot_name}\n\n` +
+            `📝 سبب الرفض:\n${rejectMessage}\n\n` +
+            `⚠️ إذا كنت تعتقد أن هذا الرفض ظالم، يمكنك الإبلاغ عن صاحب المهمة`,
+        en: `❌ Your proof was rejected permanently\n\n` +
+            `🆔 Submission ID: ${submissionId}\n` +
+            `🤖 Task: ${submission.bot_name}\n\n` +
+            `📝 Rejection reason:\n${rejectMessage}\n\n` +
+            `⚠️ If you believe this rejection is unfair, you can report the task owner`,
+        ru: `❌ Ваше доказательство было окончательно отклонено\n\n` +
+            `🆔 ID заявки: ${submissionId}\n` +
+            `🤖 Задача: ${submission.bot_name}\n\n` +
+            `📝 Причина отклонения:\n${rejectMessage}\n\n` +
+            `⚠️ Если вы считаете это отклонение несправедливым, вы можете пожаловаться на владельца задачи`
+      };
+      
       await bot.sendMessage(
         submission.user_telegram_id,
-        `❌ تم رفض إثباتك بشكل نهائي\n\n` +
-        `🆔 رقم التقديم: ${submissionId}\n` +
-        `🤖 المهمة: ${submission.bot_name}\n\n` +
-        `📝 سبب الرفض:\n${rejectMessage}\n\n` +
-        `⚠️ إذا كنت تعتقد أن هذا الرفض ظالم، يمكنك الإبلاغ عن صاحب المهمة`,
+        userMessages[submitterLang],
         getReportKeyboard(submissionId, taskOwner.owner_id)
       );
 
-      await bot.sendMessage(chatId, `✅ تم رفض التقديم #${submissionId} بشكل نهائي`);
+      const reviewerMessages = {
+        ar: `✅ تم رفض التقديم #${submissionId} بشكل نهائي`,
+        en: `✅ Submission #${submissionId} rejected permanently`,
+        ru: `✅ Заявка #${submissionId} окончательно отклонена`
+      };
+      
+      await bot.sendMessage(chatId, reviewerMessages[reviewerLang]);
     }
 
     rejectStates.delete(chatId);
     return true;
   } catch (error) {
     logger.error(`Failed to process rejection: ${error.message}`);
-    await bot.sendMessage(chatId, '❌ حدث خطأ أثناء معالجة الرفض');
+    
+    const errorMessages = {
+      ar: '❌ حدث خطأ أثناء معالجة الرفض',
+      en: '❌ Error occurred while processing rejection',
+      ru: '❌ Произошла ошибка при обработке отклонения'
+    };
+    
+    await bot.sendMessage(chatId, errorMessages[reviewerLang]);
     rejectStates.delete(chatId);
     return true;
   }
@@ -793,16 +938,24 @@ export async function handleReport(bot, query) {
     const recentReports = await Report.getRecentReportsByUser(reporter.id, 5);
     
     if (recentReports >= 5) {
-      logger.warning(`User ${reporter.id} is spamming reports - banning`);
+      logger.warning(`User ${reporter.id} is spamming reports - adding violation`);
       
-      await User.banUser(reporter.id);
+      // إضافة مخالفة سبام الإبلاغات (3 نقاط)
+      const result = await ViolationSystem.addViolation(
+        reporter.id,
+        'SPAM_REPORTS',
+        'إرسال 5 إبلاغات في 5 دقائق'
+      );
       
       const supportText = await Settings.getSupportText(reporter.language || 'ar');
+      const penalty = result.penalty || { action: 'warning' };
+      const penaltyMessage = ViolationSystem.getPenaltyMessage(penalty, result.totalPoints, reporter.language || 'ar');
       
       await bot.sendMessage(
         query.message.chat.id,
-        `🚫 تم حظرك من البوت بسبب إرسال إبلاغات متكررة (سبام)\n\n` +
-        `⚠️ إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم:\n\n${supportText}`
+        `${penaltyMessage}\n\n` +
+        `⚠️ السبب: إرسال إبلاغات متكررة (سبام)\n\n` +
+        `📞 للاستفسار: ${supportText}`
       );
       return;
     }
@@ -839,24 +992,43 @@ export async function handleReport(bot, query) {
     const reportedUser = await User.findById(reportedUserId);
     
     if (reportCount >= 5) {
-      // حظر المستخدم بعد 5 إبلاغات من 5 مستخدمين مختلفين
-      logger.warning(`User ${reportedUserId} received 5 reports - banning`);
+      // إضافة مخالفة للمستخدم المبلغ عنه (5 إبلاغات = 5 نقاط)
+      logger.warning(`User ${reportedUserId} received 5 reports - adding violations`);
       
-      await User.banUser(reportedUserId);
+      // إضافة 5 نقاط (نقطة لكل إبلاغ)
+      const result = await ViolationSystem.addViolation(
+        reportedUserId,
+        'REPORT_RECEIVED',
+        `تلقي 5 إبلاغات من 5 مستخدمين مختلفين`
+      );
+      
+      // إضافة 4 نقاط إضافية (ليصبح المجموع 5)
+      for (let i = 0; i < 4; i++) {
+        await ViolationSystem.addViolation(
+          reportedUserId,
+          'REPORT_RECEIVED',
+          `إبلاغ إضافي (${i + 2}/5)`
+        );
+      }
+      
       await Report.clearReports(reportedUserId);
       
       const supportText = await Settings.getSupportText(reportedUser.language || 'ar');
+      const penalty = result.penalty || { action: 'warning' };
+      const totalPoints = await User.getViolationPoints(reportedUserId);
+      const penaltyMessage = ViolationSystem.getPenaltyMessage(penalty, totalPoints, reportedUser.language || 'ar');
       
       await bot.sendMessage(
         reportedUser.telegram_id,
-        `🚫 تم حظرك من البوت بسبب تلقي 5 إبلاغات من مستخدمين مختلفين\n\n` +
-        `⚠️ إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم:\n\n${supportText}`
+        `${penaltyMessage}\n\n` +
+        `⚠️ السبب: تلقي 5 إبلاغات من مستخدمين مختلفين\n\n` +
+        `📞 للاستئناف: ${supportText}`
       );
 
       await bot.sendMessage(
         query.message.chat.id,
         `✅ تم إرسال الإبلاغ بنجاح\n\n` +
-        `⚠️ المستخدم المبلغ عنه تلقى 5 إبلاغات وتم حظره تلقائياً`
+        `⚠️ المستخدم المبلغ عنه تلقى 5 إبلاغات وتم معاقبته`
       );
 
       // إشعار الأدمن
@@ -864,10 +1036,12 @@ export async function handleReport(bot, query) {
         try {
           await bot.sendMessage(
             adminId,
-            `🚨 تم حظر مستخدم تلقائياً بعد 5 إبلاغات\n\n` +
+            `🚨 تم معاقبة مستخدم تلقائياً بعد 5 إبلاغات\n\n` +
             `👤 المستخدم: ${reportedUser.username ? '@' + reportedUser.username : reportedUser.telegram_id}\n` +
             `🆔 ID: ${reportedUser.telegram_id}\n` +
-            `📊 عدد الإبلاغات: ${reportCount}`
+            `📊 عدد الإبلاغات: ${reportCount}\n` +
+            `⚠️ نقاط المخالفات: ${totalPoints}\n` +
+            `🔨 العقوبة: ${penalty.action}`
           );
         } catch (error) {
           logger.error(`Failed to notify admin ${adminId}: ${error.message}`);

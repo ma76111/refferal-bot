@@ -130,7 +130,7 @@ export const depositMethodKeyboard = {
   reply_markup: {
     inline_keyboard: [
       [{ text: '🆔 Binance Pay ID', callback_data: 'deposit_binance_id' }],
-      [{ text: '💼 عنوان المحفظة', callback_data: 'deposit_wallet' }],
+      // [{ text: '💼 عنوان المحفظة', callback_data: 'deposit_wallet' }], // معطل مؤقتاً
       [{ text: '❌ إلغاء', callback_data: 'cancel' }]
     ]
   }
@@ -144,7 +144,26 @@ export const adminPanelKeyboard = {
       ['✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص'],
       ['📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة'],
       ['🔄 تغيير مهلة التحسين', '💰 تغيير الحد الأدنى للمكافأة'],
+      ['💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات'],
+      ['📢 رسالة جماعية', '📋 الاستئنافات'],
       ['🔙 رجوع']
+    ],
+    resize_keyboard: true
+  }
+};
+
+// لوحة تحكم خاصة بالأدمن الرئيسي فقط
+export const mainAdminPanelKeyboard = {
+  reply_markup: {
+    keyboard: [
+      ['✅ مراجعة المهام', '💵 مراجعة الإيداعات'],
+      ['💸 مراجعة السحوبات', '🔍 البحث عن مستخدم'],
+      ['✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص'],
+      ['📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة'],
+      ['🔄 تغيير مهلة التحسين', '💰 تغيير الحد الأدنى للمكافأة'],
+      ['💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات'],
+      ['📢 رسالة جماعية', '📋 الاستئنافات'],
+      ['👥 إدارة الأدمنز', '🔙 رجوع']
     ],
     resize_keyboard: true
   }
@@ -172,6 +191,7 @@ export const userLanguageKeyboard = {
 };
 
 
+// دالة متزامنة - يجب أن يتم تمرير isAdmin من الخارج بعد التحقق
 export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
   const texts = {
     ar: {
@@ -187,6 +207,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       help: '⚙️ المساعدة',
       support: '💬 الدعم',
       language: '🌐 اللغة',
+      ratings: '⭐ تقييماتي',
+      appeal: '📝 استئناف',
       adminPanel: '⚙️ لوحة التحكم'
     },
     en: {
@@ -202,6 +224,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       help: '⚙️ Help',
       support: '💬 Support',
       language: '🌐 Language',
+      ratings: '⭐ My Ratings',
+      appeal: '📝 Appeal',
       adminPanel: '⚙️ Admin Panel'
     },
     ru: {
@@ -217,6 +241,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       help: '⚙️ Помощь',
       support: '💬 Поддержка',
       language: '🌐 Язык',
+      ratings: '⭐ Мои рейтинги',
+      appeal: '📝 Апелляция',
       adminPanel: '⚙️ Панель управления'
     }
   };
@@ -230,8 +256,9 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
           [t.tasks, t.add],
           [t.info, t.myTasks],
           [t.mySubmissions, t.deposit],
-          [t.withdraw, t.support],
-          [t.language, t.adminPanel]
+          [t.withdraw, t.ratings],
+          [t.support, t.language],
+          [t.adminPanel]
         ],
         resize_keyboard: true
       }
@@ -243,8 +270,9 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
           [t.tasks, t.add],
           [t.info, t.myTasks],
           [t.mySubmissions, t.deposit],
-          [t.withdraw, t.support],
-          [t.language]
+          [t.withdraw, t.ratings],
+          [t.support, t.language],
+          [t.appeal]
         ],
         resize_keyboard: true
       }
@@ -254,15 +282,37 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
 
 
 // لوحة مفاتيح خيارات الرفض
-export const getRejectKeyboard = (submissionId) => ({
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: '🔄 رفض مع فرصة ثانية', callback_data: `reject_retry_${submissionId}` }],
-      [{ text: '❌ رفض نهائي', callback_data: `reject_final_${submissionId}` }],
-      [{ text: '🔙 رجوع', callback_data: `back_to_review_${submissionId}` }]
-    ]
-  }
-});
+export const getRejectKeyboard = (submissionId, lang = 'ar') => {
+  const texts = {
+    ar: {
+      retry: '🔄 رفض مع فرصة ثانية',
+      final: '❌ رفض نهائي',
+      back: '🔙 رجوع'
+    },
+    en: {
+      retry: '🔄 Reject with Second Chance',
+      final: '❌ Final Rejection',
+      back: '🔙 Back'
+    },
+    ru: {
+      retry: '🔄 Отклонить с повторной попыткой',
+      final: '❌ Окончательное отклонение',
+      back: '🔙 Назад'
+    }
+  };
+
+  const t = texts[lang] || texts.ar;
+
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t.retry, callback_data: `reject_retry_${submissionId}` }],
+        [{ text: t.final, callback_data: `reject_final_${submissionId}` }],
+        [{ text: t.back, callback_data: `back_to_review_${submissionId}` }]
+      ]
+    }
+  };
+};
 
 // لوحة مفاتيح الإبلاغ
 export const getReportKeyboard = (submissionId, reportedUserId) => ({

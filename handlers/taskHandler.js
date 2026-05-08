@@ -609,6 +609,17 @@ export async function handleViewTasks(bot, msg) {
     }
     message += `\n`;
     message += `🆔 ID: ${task.id}\n`;
+    
+    // إضافة اسم صاحب المهمة
+    if (!isOwner && task.owner_username) {
+      const ownerTexts = {
+        ar: '👤 صاحب المهمة',
+        en: '👤 Task owner',
+        ru: '👤 Владелец'
+      };
+      message += `${ownerTexts[lang]}: @${task.owner_username}\n`;
+    }
+    
     message += `💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeText[lang]}\n`;
     message += `👥 ${task.completed_count}/${task.required_count}`;
     

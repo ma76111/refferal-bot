@@ -8,6 +8,7 @@ import { VIOLATION_TYPES } from '../models/Violation.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 import { cancelKeyboard, mainMenu, reviewKeyboard, getRejectKeyboard, getReportKeyboard } from '../utils/keyboards.js';
+import Admin from '../models/Admin.js';
 
 const submissionStates = new Map();
 const submissionTimers = new Map();
@@ -33,6 +34,18 @@ export async function handleStartSubmission(bot, msg, taskId) {
       ar: '❌ المهمة غير موجودة',
       en: '❌ Task not found',
       ru: '❌ Задача не найдена'
+    };
+    await bot.sendMessage(chatId, messages[lang]);
+    return;
+  }
+
+  // التحقق من حالة المهمة
+  if (task.status !== 'active') {
+    logger.warning(`Task ${taskId} is not active (status: ${task.status})`);
+    const messages = {
+      ar: '⚠️ هذه المهمة متوقفة حالياً',
+      en: '⚠️ This task is currently paused',
+      ru: '⚠️ Эта задача приостановлена'
     };
     await bot.sendMessage(chatId, messages[lang]);
     return;
@@ -456,7 +469,7 @@ async function finalizeSubmission(bot, chatId, state) {
     } else {
       logger.error(`Failed to create submission: ${error.message}`);
       await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إرسال الإثبات', mainMenu);
-      console.error(error);
+      logger.error('SUBMISSION', 'Submission creation error details', error);
     }
     submissionStates.delete(chatId);
   }
@@ -509,7 +522,7 @@ async function notifyReviewers(bot, submissionId, task, state) {
     logger.success(`Task owner ${taskOwner.telegram_id} notified about submission ${submissionId}`);
   } catch (error) {
     logger.error(`Failed to notify task owner ${taskOwner.telegram_id}: ${error.message}`);
-    console.error(`Failed to notify task owner ${taskOwner.telegram_id}:`, error);
+    logger.error('NOTIFY_OWNER', 'Notification error details', error);
   }
 }
 
@@ -522,140 +535,181 @@ export async function handleReview(bot, query) {
   // معالجة القبول
   if (data.startsWith('review_accept_')) {
     const submissionId = parseInt(data.split('_')[2]);
-    const submission = await Submission.getById(submissionId);
     
-    if (!submission) {
-      await bot.answerCallbackQuery(query.id, { text: '❌ التقديم غير موجود' });
+    // حماية من الضغط المتكرر - استخدام global processing set
+    const processingKey = `processing_submission_${submissionId}`;
+    if (global.processingSubmissions && global.processingSubmissions.has(processingKey)) {
+      await bot.answerCallbackQuery(query.id, { text: '⏳ جاري المعالجة...' });
       return;
     }
-
-    if (submission.status !== 'pending') {
-      await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
-      return;
-    }
-
-    // التحقق من الصلاحيات: أدمن أو صاحب المهمة
-    const task = await Task.getById(submission.task_id);
-    const reviewer = await User.findByTelegramId(reviewerId);
     
-    const isAdmin = config.ADMIN_IDS.includes(reviewerId);
-    const isTaskOwner = task && reviewer && task.owner_id === reviewer.id;
+    // تعيين الحالة
+    if (!global.processingSubmissions) global.processingSubmissions = new Set();
+    global.processingSubmissions.add(processingKey);
     
-    if (!isAdmin && !isTaskOwner) {
-      logger.warning(`Unauthorized review attempt by ${reviewerId}`);
-      await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
-      return;
-    }
-
-    await Submission.updateStatus(submissionId, 'accept', reviewer.id);
-
-    // إضافة المكافأة
-    if (submission.task_type === 'paid') {
-      await User.updateBalance(submission.user_id, submission.reward_per_user);
-      logger.success(`Reward ${submission.reward_per_user} added to user ${submission.user_id}`);
-    }
-
-    logger.success(`Task ${submission.task_id} count remains unchanged (already counted on submission)`);
-
-    // حذف الصور من قاعدة البيانات لتوفير المساحة
-    await Submission.clearProofImages(submissionId);
-    logger.success(`Proof images cleared for accepted submission ${submissionId}`);
-
-    const user = await User.findById(submission.user_id);
-    const lang = user?.language || 'ar';
-    
-    const acceptMessages = {
-      ar: `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'تم احتساب إحالة'}`,
-      en: `✅ Your proof has been accepted!\n\n🆔 Submission ID: ${submissionId}\n💰 Reward: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Referral counted'}`,
-      ru: `✅ Ваше доказательство принято!\n\n🆔 ID заявки: ${submissionId}\n💰 Награда: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Реферал засчитан'}`
-    };
-
-    // إشعار المستخدم
-    await bot.sendMessage(submission.user_telegram_id, acceptMessages[lang]);
-
-    // إرسال زر التقييم لصاحب المهمة
-    const taskOwner = await User.findById(task.owner_id);
-    const ownerLang = taskOwner?.language || 'ar';
-    
-    const ratingMessages = {
-      ar: `✅ تم قبول إثبات المستخدم @${user.username || 'مستخدم'}\n\n💡 يمكنك الآن تقييم أداء المستخدم`,
-      en: `✅ User @${user.username || 'user'}'s proof has been accepted\n\n💡 You can now rate the user's performance`,
-      ru: `✅ Доказательство пользователя @${user.username || 'пользователь'} принято\n\n💡 Теперь вы можете оценить работу пользователя`
-    };
-    
-    const ratingButtonTexts = {
-      ar: '⭐ تقييم المستخدم',
-      en: '⭐ Rate User',
-      ru: '⭐ Оценить пользователя'
-    };
-    
-    const ratingKeyboard = {
-      reply_markup: {
-        inline_keyboard: [
-          [{ 
-            text: ratingButtonTexts[ownerLang], 
-            callback_data: `rate_user_${submission.task_id}_${submission.user_id}` 
-          }]
-        ]
+    try {
+      const submission = await Submission.getById(submissionId);
+      
+      if (!submission) {
+        await bot.answerCallbackQuery(query.id, { text: '❌ التقديم غير موجود' });
+        return;
       }
-    };
 
-    await bot.sendMessage(taskOwner.telegram_id, ratingMessages[ownerLang], ratingKeyboard);
+      if (submission.status !== 'pending') {
+        await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
+        return;
+      }
 
-    await bot.editMessageText(
-      query.message.text + '\n\n✅ تم القبول',
-      { chat_id: query.message.chat.id, message_id: query.message.message_id }
-    );
+      // التحقق من الصلاحيات: أدمن أو صاحب المهمة
+      const task = await Task.getById(submission.task_id);
+      const reviewer = await User.findByTelegramId(reviewerId);
+      
+      const isAdmin = await Admin.isAdmin(reviewerId);
+      const isTaskOwner = task && reviewer && task.owner_id === reviewer.id;
+      
+      if (!isAdmin && !isTaskOwner) {
+        logger.warning(`Unauthorized review attempt by ${reviewerId}`);
+        await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
+        return;
+      }
 
-    await bot.answerCallbackQuery(query.id, { text: '✅ تم القبول' });
+      await Submission.updateStatus(submissionId, 'accept', reviewer.id);
+
+      // إضافة المكافأة
+      if (submission.task_type === 'paid') {
+        await User.updateBalance(submission.user_id, submission.reward_per_user);
+        logger.success(`Reward ${submission.reward_per_user} added to user ${submission.user_id}`);
+      }
+
+      logger.success(`Task ${submission.task_id} count remains unchanged (already counted on submission)`);
+
+      // حذف الصور من قاعدة البيانات لتوفير المساحة
+      await Submission.clearProofImages(submissionId);
+      logger.success(`Proof images cleared for accepted submission ${submissionId}`);
+
+      const user = await User.findById(submission.user_id);
+      const lang = user?.language || 'ar';
+      
+      const acceptMessages = {
+        ar: `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'تم احتساب إحالة'}`,
+        en: `✅ Your proof has been accepted!\n\n🆔 Submission ID: ${submissionId}\n💰 Reward: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Referral counted'}`,
+        ru: `✅ Ваше доказательство принято!\n\n🆔 ID заявки: ${submissionId}\n💰 Награда: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Реферал засчитан'}`
+      };
+
+      // إشعار المستخدم
+      await bot.sendMessage(submission.user_telegram_id, acceptMessages[lang]);
+
+      // إرسال زر التقييم لصاحب المهمة
+      const taskOwner = await User.findById(task.owner_id);
+      const ownerLang = taskOwner?.language || 'ar';
+      
+      const ratingMessages = {
+        ar: `✅ تم قبول إثبات المستخدم @${user.username || 'مستخدم'}\n\n💡 يمكنك الآن تقييم أداء المستخدم`,
+        en: `✅ User @${user.username || 'user'}'s proof has been accepted\n\n💡 You can now rate the user's performance`,
+        ru: `✅ Доказательство пользователя @${user.username || 'пользователь'} принято\n\n💡 Теперь вы можете оценить работу пользователя`
+      };
+      
+      const ratingButtonTexts = {
+        ar: '⭐ تقييم المستخدم',
+        en: '⭐ Rate User',
+        ru: '⭐ Оценить пользователя'
+      };
+      
+      const ratingKeyboard = {
+        reply_markup: {
+          inline_keyboard: [
+            [{ 
+              text: ratingButtonTexts[ownerLang], 
+              callback_data: `rate_user_${submission.task_id}_${submission.user_id}` 
+            }]
+          ]
+        }
+      };
+
+      await bot.sendMessage(taskOwner.telegram_id, ratingMessages[ownerLang], ratingKeyboard);
+
+      await bot.editMessageText(
+        query.message.text + '\n\n✅ تم القبول',
+        { chat_id: query.message.chat.id, message_id: query.message.message_id }
+      );
+
+      await bot.answerCallbackQuery(query.id, { text: '✅ تم القبول' });
+    } finally {
+      // إزالة الحالة
+      global.processingSubmissions.delete(processingKey);
+    }
     return;
   }
 
   // معالجة الرفض - عرض الخيارات
   if (data.startsWith('review_reject_')) {
     const submissionId = parseInt(data.split('_')[2]);
-    const submission = await Submission.getById(submissionId);
     
-    if (!submission) {
-      await bot.answerCallbackQuery(query.id, { text: '❌ التقديم غير موجود' });
+    // حماية من الضغط المتكرر - استخدام global processing set
+    const processingKey = `processing_reject_${submissionId}`;
+    if (global.processingRejects && global.processingRejects.has(processingKey)) {
+      await bot.answerCallbackQuery(query.id, { text: '⏳ جاري المعالجة...' });
       return;
     }
+    
+    // تعيين الحالة
+    if (!global.processingRejects) global.processingRejects = new Set();
+    global.processingRejects.add(processingKey);
+    
+    try {
+      const submission = await Submission.getById(submissionId);
+      
+      if (!submission) {
+        await bot.answerCallbackQuery(query.id, { text: '❌ التقديم غير موجود' });
+        return;
+      }
 
-    if (submission.status !== 'pending') {
-      await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
-      return;
+      if (submission.status !== 'pending') {
+        await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
+        return;
+      }
+
+      // التحقق من الصلاحيات: أدمن أو صاحب المهمة
+      const task = await Task.getById(submission.task_id);
+      const reviewer = await User.findByTelegramId(reviewerId);
+      
+      const isAdmin = await Admin.isAdmin(reviewerId);
+      const isTaskOwner = task && reviewer && task.owner_id === reviewer.id;
+      
+      if (!isAdmin && !isTaskOwner) {
+        logger.warning(`Unauthorized review attempt by ${reviewerId}`);
+        await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
+        return;
+      }
+
+      // حماية من الضغط المتكرر - التحقق من وجود حالة رفض نشطة
+      const existingState = rejectStates.get(query.message.chat.id);
+      if (existingState && existingState.submissionId === submissionId) {
+        await bot.answerCallbackQuery(query.id, { text: '⚠️ جاري معالجة الرفض بالفعل' });
+        return;
+      }
+
+      await bot.answerCallbackQuery(query.id);
+      
+      // الحصول على لغة المراجع
+      const lang = reviewer?.language || 'ar';
+      
+      // عرض خيارات الرفض
+      const rejectMessages = {
+        ar: `❓ اختر نوع الرفض للتقديم #${submissionId}:`,
+        en: `❓ Choose rejection type for submission #${submissionId}:`,
+        ru: `❓ Выберите тип отклонения для заявки #${submissionId}:`
+      };
+      
+      await bot.sendMessage(
+        query.message.chat.id,
+        rejectMessages[lang],
+        getRejectKeyboard(submissionId, lang)
+      );
+    } finally {
+      // إزالة الحالة
+      global.processingRejects.delete(processingKey);
     }
-
-    // التحقق من الصلاحيات: أدمن أو صاحب المهمة
-    const task = await Task.getById(submission.task_id);
-    const reviewer = await User.findByTelegramId(reviewerId);
-    
-    const isAdmin = config.ADMIN_IDS.includes(reviewerId);
-    const isTaskOwner = task && reviewer && task.owner_id === reviewer.id;
-    
-    if (!isAdmin && !isTaskOwner) {
-      logger.warning(`Unauthorized review attempt by ${reviewerId}`);
-      await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
-      return;
-    }
-
-    await bot.answerCallbackQuery(query.id);
-    
-    // الحصول على لغة المراجع
-    const lang = reviewer?.language || 'ar';
-    
-    // عرض خيارات الرفض
-    const rejectMessages = {
-      ar: `❓ اختر نوع الرفض للتقديم #${submissionId}:`,
-      en: `❓ Choose rejection type for submission #${submissionId}:`,
-      ru: `❓ Выберите тип отклонения для заявки #${submissionId}:`
-    };
-    
-    await bot.sendMessage(
-      query.message.chat.id,
-      rejectMessages[lang],
-      getRejectKeyboard(submissionId, lang)
-    );
     return;
   }
 
@@ -1032,7 +1086,8 @@ export async function handleReport(bot, query) {
       );
 
       // إشعار الأدمن
-      for (const adminId of config.ADMIN_IDS) {
+      const adminIds = await Admin.getAllAdminIds();
+      for (const adminId of adminIds) {
         try {
           await bot.sendMessage(
             adminId,
@@ -1050,15 +1105,14 @@ export async function handleReport(bot, query) {
     } else {
       await bot.sendMessage(
         query.message.chat.id,
-        `✅ تم إرسال الإبلاغ بنجاح\n\n` +
-        `📊 عدد الإبلاغات على هذا المستخدم: ${reportCount}/5\n\n` +
-        `سيتم مراجعة الإبلاغ من قبل الإدارة`
+        `✅ تم إرسال الإبلاغ بنجاح`
       );
 
       // إشعار الأدمن
       const taskOwner = await Submission.getTaskOwner(submissionId);
       
-      for (const adminId of config.ADMIN_IDS) {
+      const adminIds = await Admin.getAllAdminIds();
+      for (const adminId of adminIds) {
         try {
           await bot.sendMessage(
             adminId,

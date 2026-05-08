@@ -72,14 +72,30 @@ export default class User {
 
   static updateBalance(userId, amount) {
     return new Promise((resolve, reject) => {
-      db.run(
-        'UPDATE users SET balance = balance + ? WHERE id = ?',
-        [amount, userId],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
+      db.serialize(() => {
+        db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          db.run(
+            'UPDATE users SET balance = balance + ? WHERE id = ?',
+            [amount, userId],
+            (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                reject(err);
+              } else {
+                db.run('COMMIT', (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                });
+              }
+            }
+          );
+        });
+      });
     });
   }
 

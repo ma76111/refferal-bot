@@ -4,6 +4,7 @@ import Settings from '../models/Settings.js';
 import config from '../config.js';
 import { logInfo, logSuccess, logError, logWarning, logCallback } from '../utils/logger.js';
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu } from '../utils/keyboards.js';
+import Admin from '../models/Admin.js';
 
 const withdrawalStates = new Map();
 
@@ -103,7 +104,7 @@ export async function handleWithdrawalSteps(bot, msg) {
 
   if (msg.text === '❌ إلغاء') {
     withdrawalStates.delete(chatId);
-    const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+    const isAdmin = await Admin.isAdmin(msg.from.id);
     const cancelMessages = {
       ar: '❌ تم إلغاء العملية',
       en: '❌ Operation cancelled',
@@ -192,8 +193,36 @@ export async function handleWithdrawalSteps(bot, msg) {
       try {
         logInfo('WITHDRAWAL', `Creating request: ${state.amount} USDT via Binance Pay ID`);
         
+        // التحقق من الرصيد قبل الخصم
+        const currentBalance = await User.getBalance(state.userId);
+        if (currentBalance < state.amount) {
+          logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
+          const messages = {
+            ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
+            en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
+            ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
+          };
+          await bot.sendMessage(chatId, messages[lang]);
+          return;
+        }
+        
         // خصم المبلغ من الرصيد
         await User.updateBalance(state.userId, -state.amount);
+        
+        // التحقق مرة أخرى بعد الخصم (للأمان)
+        const newBalance = await User.getBalance(state.userId);
+        if (newBalance < 0) {
+          // إعادة المبلغ
+          await User.updateBalance(state.userId, state.amount);
+          logError('WITHDRAWAL', `Balance went negative after withdrawal - reversed`);
+          const errorMessages = {
+            ar: '❌ حدث خطأ، يرجى المحاولة مرة أخرى',
+            en: '❌ Error occurred, please try again',
+            ru: '❌ Произошла ошибка, попробуйте еще раз'
+          };
+          await bot.sendMessage(chatId, errorMessages[lang]);
+          return;
+        }
         
         const withdrawalId = await Withdrawal.create({
           userId: state.userId,
@@ -207,7 +236,7 @@ export async function handleWithdrawalSteps(bot, msg) {
 
         logSuccess('WITHDRAWAL', `Request created with ID: ${withdrawalId}`);
 
-        const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+        const isAdmin = await Admin.isAdmin(msg.from.id);
         const successMessages = {
           ar: `✅ تم إرسال طلب السحب بنجاح!\n\n💰 المبلغ: ${state.amount} USDT\n🆔 رقم الطلب: ${withdrawalId}\n\n⏳ سيتم مراجعة طلبك قريباً\n\n📝 ملاحظة: تم خصم المبلغ من رصيدك`,
           en: `✅ Withdrawal request sent successfully!\n\n💰 Amount: ${state.amount} USDT\n🆔 Request ID: ${withdrawalId}\n\n⏳ Your request will be reviewed soon\n\n📝 Note: Amount has been deducted from your balance`,
@@ -248,8 +277,36 @@ export async function handleWithdrawalSteps(bot, msg) {
       try {
         logInfo('WITHDRAWAL', `Creating request: ${state.amount} USDT to ${state.walletAddress}`);
         
+        // التحقق من الرصيد قبل الخصم
+        const currentBalance = await User.getBalance(state.userId);
+        if (currentBalance < state.amount) {
+          logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
+          const messages = {
+            ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
+            en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
+            ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
+          };
+          await bot.sendMessage(chatId, messages[lang]);
+          return;
+        }
+        
         // خصم المبلغ من الرصيد
         await User.updateBalance(state.userId, -state.amount);
+        
+        // التحقق مرة أخرى بعد الخصم (للأمان)
+        const newBalance = await User.getBalance(state.userId);
+        if (newBalance < 0) {
+          // إعادة المبلغ
+          await User.updateBalance(state.userId, state.amount);
+          logError('WITHDRAWAL', `Balance went negative after withdrawal - reversed`);
+          const errorMessages = {
+            ar: '❌ حدث خطأ، يرجى المحاولة مرة أخرى',
+            en: '❌ Error occurred, please try again',
+            ru: '❌ Произошла ошибка, попробуйте еще раз'
+          };
+          await bot.sendMessage(chatId, errorMessages[lang]);
+          return;
+        }
         
         const withdrawalId = await Withdrawal.create({
           userId: state.userId,
@@ -263,7 +320,7 @@ export async function handleWithdrawalSteps(bot, msg) {
 
         logSuccess('WITHDRAWAL', `Request created with ID: ${withdrawalId}`);
 
-        const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+        const isAdmin = await Admin.isAdmin(msg.from.id);
         const successMessages = {
           ar: `✅ تم إرسال طلب السحب بنجاح!\n\n💰 المبلغ: ${state.amount} USDT\n📍 العنوان: ${state.walletAddress}\n🌐 الشبكة: ${state.network}\n🆔 رقم الطلب: ${withdrawalId}\n\n⏳ سيتم مراجعة طلبك قريباً\n\n📝 ملاحظة: تم خصم المبلغ من رصيدك`,
           en: `✅ Withdrawal request sent successfully!\n\n💰 Amount: ${state.amount} USDT\n📍 Address: ${state.walletAddress}\n🌐 Network: ${state.network}\n🆔 Request ID: ${withdrawalId}\n\n⏳ Your request will be reviewed soon\n\n📝 Note: Amount has been deducted from your balance`,
@@ -321,7 +378,8 @@ async function notifyAdminsWithdrawal(bot, withdrawalId, state) {
     }
   };
 
-  for (const adminId of config.ADMIN_IDS) {
+  const adminIds = await Admin.getAllAdminIds();
+  for (const adminId of adminIds) {
     try {
       await bot.sendMessage(adminId, message, keyboard);
       
@@ -343,7 +401,8 @@ export async function handleWithdrawalReview(bot, query) {
 
   logCallback(data, reviewerId, query.from.username);
 
-  if (!config.ADMIN_IDS.includes(reviewerId)) {
+  const isAdmin = await Admin.isAdmin(reviewerId);
+  if (!isAdmin) {
     logWarning('WITHDRAWAL', `Unauthorized review attempt by ${reviewerId}`);
     await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
     return;

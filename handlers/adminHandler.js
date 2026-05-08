@@ -281,7 +281,7 @@ export async function handleAdminSteps(bot, msg) {
           await bot.sendMessage(chatId, '❌ لا يمكن إضافة الأدمن الرئيسي كأدمن ثانوي', mainAdminPanelKeyboard);
         } else {
           await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إضافة الأدمن', mainAdminPanelKeyboard);
-          console.error(error);
+          logError('ADMIN', 'Error adding admin', error);
         }
       }
       adminStates.delete(chatId);
@@ -320,7 +320,7 @@ export async function handleAdminSteps(bot, msg) {
           await bot.sendMessage(chatId, '❌ لا يمكن إزالة الأدمن الرئيسي', mainAdminPanelKeyboard);
         } else {
           await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إزالة الأدمن', mainAdminPanelKeyboard);
-          console.error(error);
+          logError('ADMIN', 'Error removing admin', error);
         }
       }
       adminStates.delete(chatId);

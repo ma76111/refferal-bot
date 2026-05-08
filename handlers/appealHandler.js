@@ -5,6 +5,7 @@ import ViolationSystem from '../utils/violationSystem.js';
 import config from '../config.js';
 import { adminPanelKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logError, logWarning } from '../utils/logger.js';
+import Admin from '../models/Admin.js';
 
 const appealStates = new Map();
 
@@ -118,7 +119,8 @@ export async function handleAppealReason(bot, msg) {
     await bot.sendMessage(chatId, messages[lang], { parse_mode: 'Markdown' });
     
     // إشعار الأدمن
-    for (const adminId of config.ADMIN_IDS) {
+    const adminIds = await Admin.getAllAdminIds();
+    for (const adminId of adminIds) {
       try {
         const keyboard = {
           reply_markup: {
@@ -163,7 +165,8 @@ export async function handleAppealReview(bot, query) {
   const action = data.split('_')[1]; // appeal_approve_id or appeal_reject_id
   const appealId = parseInt(data.split('_')[2]);
   
-  if (!config.ADMIN_IDS.includes(query.from.id)) {
+  const isAdmin = await Admin.isAdmin(query.from.id);
+  if (!isAdmin) {
     await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
     return;
   }
@@ -305,7 +308,8 @@ export async function handleAppealRejectNote(bot, msg) {
 export async function handleViewAppeals(bot, msg) {
   const chatId = msg.chat.id;
   
-  if (!config.ADMIN_IDS.includes(msg.from.id)) {
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
     await bot.sendMessage(chatId, '❌ غير مصرح لك بهذا الأمر');
     return;
   }

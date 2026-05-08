@@ -2,11 +2,13 @@ import Statistics from '../models/Statistics.js';
 import config from '../config.js';
 import { adminPanelKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logError } from '../utils/logger.js';
+import Admin from '../models/Admin.js';
 
 export async function handleStatistics(bot, msg) {
   const chatId = msg.chat.id;
   
-  if (!config.ADMIN_IDS.includes(msg.from.id)) {
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
     await bot.sendMessage(chatId, '❌ غير مصرح لك بهذا الأمر');
     return;
   }
@@ -87,7 +89,8 @@ export async function handleStatistics(bot, msg) {
 export async function handleTopUsers(bot, msg) {
   const chatId = msg.chat.id;
   
-  if (!config.ADMIN_IDS.includes(msg.from.id)) {
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
     await bot.sendMessage(chatId, '❌ غير مصرح لك بهذا الأمر');
     return;
   }

@@ -5,6 +5,7 @@ import Settings from '../models/Settings.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 import { getTaskTypeKeyboard, getProofTypeKeyboard, cancelKeyboard, mainMenu, adminMenu, getMainMenuKeyboard } from '../utils/keyboards.js';
+import Admin from '../models/Admin.js';
 
 const userStates = new Map();
 
@@ -637,14 +638,14 @@ export async function handleTaskDetails(bot, msg, taskId) {
   const userId = msg.from ? msg.from.id : (msg.chat ? msg.chat.id : null);
   
   if (!userId) {
-    console.error('Cannot determine user ID from message');
+    logger.error('TASK_DETAILS', 'Cannot determine user ID from message');
     return;
   }
   
   const user = await User.findByTelegramId(userId);
   
   if (!user) {
-    console.error(`User ${userId} not found`);
+    logger.error('TASK_DETAILS', `User ${userId} not found`);
     return;
   }
 
@@ -787,7 +788,7 @@ export async function handleTaskConfirmation(bot, query) {
     await bot.answerCallbackQuery(query.id);
     
     // إرسال القائمة الرئيسية
-    const isAdmin = config.ADMIN_IDS.includes(query.from.id);
+    const isAdmin = await Admin.isAdmin(query.from.id);
     const mainMenuMessages = {
       ar: '📋 القائمة الرئيسية:',
       en: '📋 Main Menu:',
@@ -846,7 +847,7 @@ export async function handleTaskConfirmation(bot, query) {
       const lang = user?.language || 'ar';
       
       // التحقق من أن المستخدم أدمن
-      const isAdmin = config.ADMIN_IDS.includes(query.from.id);
+      const isAdmin = await Admin.isAdmin(query.from.id);
 
       const successMessages = {
         ar: {
@@ -937,7 +938,7 @@ export async function handleTaskConfirmation(bot, query) {
         message_id: query.message.message_id
       });
       await bot.answerCallbackQuery(query.id, { text: '❌' });
-      console.error(error);
+      logger.error('TASK_CONFIRMATION', 'Error creating task', error);
       userStates.delete(chatId);
     }
   }

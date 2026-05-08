@@ -5,6 +5,7 @@ import config from '../config.js';
 import logger from '../utils/logger.js';
 import BinanceAPI from '../utils/binanceApi.js';
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu, depositReviewKeyboard } from '../utils/keyboards.js';
+import Admin from '../models/Admin.js';
 
 const depositStates = new Map();
 const MIN_DEPOSIT = 0.1;
@@ -88,7 +89,7 @@ export async function handleDepositSteps(bot, msg) {
 
   if (msg.text === '❌ إلغاء') {
     depositStates.delete(chatId);
-    const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+    const isAdmin = await Admin.isAdmin(msg.from.id);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', isAdmin ? adminMenu : mainMenu);
     return true;
   }
@@ -172,7 +173,7 @@ export async function handleDepositSteps(bot, msg) {
 
         logger.success(`Deposit request created with ID: ${depositId}`);
 
-        const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+        const isAdmin = await Admin.isAdmin(msg.from.id);
         await bot.sendMessage(
           chatId,
           '✅ تم إرسال طلب الإيداع بنجاح!\n\n' +
@@ -232,7 +233,7 @@ export async function handleDepositSteps(bot, msg) {
             await Deposit.updateStatus(depositId, 'accept', null, 'تم التحقق تلقائياً عبر Binance API');
             await User.updateBalance(state.userId, verificationResult.amount);
 
-            const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+            const isAdmin = await Admin.isAdmin(msg.from.id);
             await bot.sendMessage(
               chatId,
               '✅ تم التحقق والقبول تلقائياً!\n\n' +
@@ -245,7 +246,8 @@ export async function handleDepositSteps(bot, msg) {
             logger.success(`Auto-verified deposit ${depositId}: ${verificationResult.amount} USDT`);
 
             // إشعار الأدمن
-            for (const adminId of config.ADMIN_IDS) {
+            const adminIds = await Admin.getAllAdminIds();
+            for (const adminId of adminIds) {
               try {
                 await bot.sendMessage(
                   adminId,
@@ -261,7 +263,7 @@ export async function handleDepositSteps(bot, msg) {
             }
           } else {
             // إرسال للمراجعة اليدوية
-            const isAdmin = config.ADMIN_IDS.includes(msg.from.id);
+            const isAdmin = await Admin.isAdmin(msg.from.id);
             await bot.sendMessage(
               chatId,
               '✅ تم التحقق من العملية!\n\n' +
@@ -320,7 +322,8 @@ async function notifyAdminsDeposit(bot, depositId, state) {
     message += `🔗 TXID: ${state.txid}\n`;
   }
 
-  for (const adminId of config.ADMIN_IDS) {
+  const adminIds = await Admin.getAllAdminIds();
+  for (const adminId of adminIds) {
     try {
       await bot.sendMessage(adminId, message, depositReviewKeyboard(depositId));
       
@@ -342,7 +345,8 @@ export async function handleDepositReview(bot, query) {
 
   logger.callback(`Deposit review action: ${data} by admin ${reviewerId}`);
 
-  if (!config.ADMIN_IDS.includes(reviewerId)) {
+  const isAdmin = await Admin.isAdmin(reviewerId);
+  if (!isAdmin) {
     logger.warning(`Unauthorized deposit review attempt by ${reviewerId}`);
     await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
     return;

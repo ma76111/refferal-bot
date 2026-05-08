@@ -4,7 +4,7 @@ export default class User {
   static create(telegramId, username) {
     return new Promise((resolve, reject) => {
       db.run(
-        'INSERT OR IGNORE INTO users (telegram_id, username) VALUES (?, ?)',
+        'INSERT OR IGNORE INTO users (telegram_id, username, exchange_points) VALUES (?, ?, 6)',
         [telegramId, username],
         function(err) {
           if (err) reject(err);
@@ -143,6 +143,19 @@ export default class User {
     return new Promise((resolve, reject) => {
       db.run(
         'UPDATE users SET exchange_points = exchange_points + ? WHERE id = ?',
+        [points, userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  static setExchangePoints(userId, points) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE users SET exchange_points = ? WHERE id = ?',
         [points, userId],
         (err) => {
           if (err) reject(err);

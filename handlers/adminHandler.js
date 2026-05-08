@@ -176,6 +176,22 @@ export async function handleAdminSteps(bot, msg) {
       adminStates.delete(chatId);
       break;
 
+    case 'awaiting_new_exchange_points':
+      const newExchangePoints = parseInt(msg.text);
+      if (isNaN(newExchangePoints)) {
+        await bot.sendMessage(chatId, '❌ الرجاء إرسال رقم صحيح');
+        return true;
+      }
+      
+      await User.setExchangePoints(state.userId, newExchangePoints);
+      await bot.sendMessage(
+        chatId,
+        `✅ تم تحديث نقاط التبادل للمستخدم إلى: ${newExchangePoints}`,
+        getAdminKeyboard(msg.from.id)
+      );
+      adminStates.delete(chatId);
+      break;
+
     case 'awaiting_task_timeout':
       const timeoutMinutes = parseInt(msg.text);
       if (isNaN(timeoutMinutes) || timeoutMinutes <= 0) {

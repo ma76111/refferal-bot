@@ -1742,6 +1742,37 @@ bot.on('callback_query', async (query) => {
       return;
     }
     
+    // معالج تعديل نقاط التبادل
+    if (data.startsWith('admin_edit_exchange_')) {
+      const userId = parseInt(data.split('_')[3]);
+      const user = await User.findByTelegramId(userId);
+      
+      if (!user) {
+        await bot.answerCallbackQuery(query.id, { text: '❌ المستخدم غير موجود' });
+        return;
+      }
+      
+      const exchangePoints = await User.getExchangePoints(user.id);
+      
+      adminStatesFromHandler.set(query.message.chat.id, { step: 'awaiting_new_exchange_points', userId: user.id });
+      
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(
+        query.message.chat.id,
+        `🔄 تعديل نقاط التبادل للمستخدم\n\n` +
+        `👤 المستخدم: ${user.username ? '@' + user.username : user.telegram_id}\n` +
+        `🔄 النقاط الحالية: ${exchangePoints}\n\n` +
+        `أرسل عدد النقاط الجديد:`,
+        {
+          reply_markup: {
+            keyboard: [['❌ إلغاء']],
+            resize_keyboard: true
+          }
+        }
+      );
+      return;
+    }
+    
     // معالج الحظر
     if (data.startsWith('admin_ban_')) {
       const userId = parseInt(data.split('_')[2]);
@@ -1779,6 +1810,9 @@ bot.on('callback_query', async (query) => {
           inline_keyboard: [
             [
               { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
+              { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+            ],
+            [
               { text: '✅ إلغاء الحظر', callback_data: `admin_unban_${user.telegram_id}` }
             ]
           ]
@@ -1820,6 +1854,9 @@ bot.on('callback_query', async (query) => {
           inline_keyboard: [
             [
               { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
+              { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+            ],
+            [
               { text: '🚫 حظر', callback_data: `admin_ban_${user.telegram_id}` }
             ]
           ]

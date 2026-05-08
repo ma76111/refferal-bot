@@ -250,6 +250,37 @@ export async function handleTaskCreationSteps(bot, msg) {
         await bot.sendMessage(chatId, messages[lang]);
         return true;
       }
+      
+      // فحص النقاط لمهام التبادل
+      if (state.taskType === 'exchange') {
+        const user = await User.findById(state.userId);
+        if (!user) {
+          logger.error(`User ${state.userId} not found`);
+          const messages = {
+            ar: '❌ حدث خطأ، الرجاء المحاولة مرة أخرى',
+            en: '❌ An error occurred, please try again',
+            ru: '❌ Произошла ошибка, попробуйте еще раз'
+          };
+          await bot.sendMessage(chatId, messages[lang]);
+          return true;
+        }
+        
+        const exchangePoints = await User.getExchangePoints(user.id);
+        
+        if (exchangePoints < count) {
+          logger.warning(`User ${state.userId} has insufficient exchange points: ${exchangePoints} < ${count}`);
+          const messages = {
+            ar: `❌ نقاط التبادل لديك غير كافية لإنشاء هذه المهمة\n\n🔄 نقاطك الحالية: ${exchangePoints}\n📊 النقاط المطلوبة: ${count}\n💡 المطلوب: ${count - exchangePoints} نقطة إضافية\n\n✅ لزيادة نقاطك:\n• نفذ مهام الآخرين لتحصل على نقاط (+1 لكل مهمة)\n• كل مهمة تنفذها = +1 نقطة تبادل`,
+            en: `❌ Your exchange points are insufficient to create this task\n\n🔄 Your current points: ${exchangePoints}\n📊 Required points: ${count}\n💡 Needed: ${count - exchangePoints} more points\n\n✅ To increase your points:\n• Complete others' tasks to get points (+1 per task)\n• Each task you complete = +1 exchange point`,
+            ru: `❌ Ваших баллов обмена недостаточно для создания этой задачи\n\n🔄 Ваши текущие баллы: ${exchangePoints}\n📊 Требуемые баллы: ${count}\n💡 Необходимо: ${count - exchangePoints} дополнительных баллов\n\n✅ Чтобы увеличить баллы:\n• Выполняйте задачи других, чтобы получить баллы (+1 за задачу)\n• Каждая выполненная задача = +1 балл обмена`
+          };
+          await bot.sendMessage(chatId, messages[lang]);
+          return true;
+        }
+        
+        logger.success(`User ${state.userId} has sufficient exchange points: ${exchangePoints} >= ${count}`);
+      }
+      
       state.requiredCount = count;
       
       if (state.taskType === 'paid') {

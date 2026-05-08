@@ -29,6 +29,18 @@ export async function handleStatistics(bot, msg) {
     message += `├ المستخدمون المحظورون: ${stats.users.banned_users}\n`;
     message += `└ إجمالي الأرصدة: ${(stats.users.total_balance || 0).toFixed(2)} USDT\n\n`;
     
+    // توزيع المستخدمين حسب اللغة
+    if (stats.usersByLanguage && stats.usersByLanguage.length > 0) {
+      message += '🌐 **المستخدمون حسب اللغة:**\n';
+      stats.usersByLanguage.forEach(lang => {
+        const langName = lang.language === 'ar' ? '🇸🇦 عربي' : 
+                        lang.language === 'en' ? '🇬🇧 English' : 
+                        lang.language === 'ru' ? '🇷🇺 Русский' : lang.language;
+        message += `├ ${langName}: ${lang.count}\n`;
+      });
+      message += '\n';
+    }
+    
     // إحصائيات المهام
     message += '📋 **المهام:**\n';
     message += `├ إجمالي المهام: ${stats.tasks.total_tasks}\n`;
@@ -46,6 +58,18 @@ export async function handleStatistics(bot, msg) {
     message += `├ مقبولة: ${stats.submissions.approved_submissions}\n`;
     message += `├ مرفوضة: ${stats.submissions.rejected_submissions}\n`;
     message += `└ مرفوضة نهائياً: ${stats.submissions.final_rejected_submissions}\n\n`;
+    
+    // إحصائيات التقييمات
+    if (stats.ratings && stats.ratings.total_ratings > 0) {
+      message += '⭐ **التقييمات:**\n';
+      message += `├ إجمالي التقييمات: ${stats.ratings.total_ratings}\n`;
+      message += `├ متوسط التقييم: ${(stats.ratings.avg_rating || 0).toFixed(1)}/5\n`;
+      message += `├ 5 نجوم: ${stats.ratings.five_stars}\n`;
+      message += `├ 4 نجوم: ${stats.ratings.four_stars}\n`;
+      message += `├ 3 نجوم: ${stats.ratings.three_stars}\n`;
+      message += `├ 2 نجوم: ${stats.ratings.two_stars}\n`;
+      message += `└ 1 نجمة: ${stats.ratings.one_star}\n\n`;
+    }
     
     // إحصائيات الإيداعات
     message += '💳 **الإيداعات:**\n';
@@ -69,6 +93,41 @@ export async function handleStatistics(bot, msg) {
     message += `├ مستخدمون بمخالفات: ${stats.violations.users_with_violations || 0}\n`;
     message += `└ إجمالي النقاط: ${stats.violations.total_points || 0}\n\n`;
     
+    // إحصائيات الحظر
+    if (stats.bans && stats.bans.total_bans > 0) {
+      message += '🚫 **الحظر:**\n';
+      message += `├ إجمالي الحظر: ${stats.bans.total_bans}\n`;
+      message += `├ حظر دائم: ${stats.bans.permanent_bans}\n`;
+      message += `├ حظر مؤقت: ${stats.bans.temporary_bans}\n`;
+      message += `└ حظر نشط: ${stats.bans.active_bans}\n\n`;
+    }
+    
+    // إحصائيات الاستئنافات
+    if (stats.appeals && stats.appeals.total_appeals > 0) {
+      message += '📋 **الاستئنافات:**\n';
+      message += `├ إجمالي الاستئنافات: ${stats.appeals.total_appeals}\n`;
+      message += `├ معلقة: ${stats.appeals.pending_appeals}\n`;
+      message += `├ مقبولة: ${stats.appeals.approved_appeals}\n`;
+      message += `└ مرفوضة: ${stats.appeals.rejected_appeals}\n\n`;
+    }
+    
+    // إحصائيات الرسائل الجماعية
+    if (stats.broadcasts && stats.broadcasts.total_broadcasts > 0) {
+      message += '📢 **الرسائل الجماعية:**\n';
+      message += `├ إجمالي الرسائل: ${stats.broadcasts.total_broadcasts}\n`;
+      message += `├ مكتملة: ${stats.broadcasts.completed_broadcasts}\n`;
+      message += `├ تم إرسالها: ${stats.broadcasts.total_sent || 0}\n`;
+      message += `└ فشلت: ${stats.broadcasts.total_failed || 0}\n\n`;
+    }
+    
+    // إحصائيات الأدمنز
+    if (stats.admins && stats.admins.total_admins > 0) {
+      message += '👨‍💼 **الأدمنز:**\n';
+      message += `├ إجمالي الأدمنز: ${stats.admins.total_admins + 1}\n`; // +1 للأدمن الرئيسي
+      message += `├ نشطون: ${stats.admins.active_admins}\n`;
+      message += `└ غير نشطين: ${stats.admins.inactive_admins}\n\n`;
+    }
+    
     // الصافي
     const netBalance = (stats.deposits.total_deposited || 0) - (stats.withdrawals.total_withdrawn || 0);
     message += '💰 **الصافي:**\n';
@@ -82,7 +141,7 @@ export async function handleStatistics(bot, msg) {
     logSuccess('STATS', 'Statistics sent successfully');
   } catch (error) {
     logError('STATS', 'Failed to get statistics', error);
-    await bot.sendMessage(chatId, '❌ حدث خطأ أثناء جمع الإحصائيات');
+    await bot.sendMessage(chatId, `❌ حدث خطأ أثناء جمع الإحصائيات\n\nالخطأ: ${error.message}`);
   }
 }
 

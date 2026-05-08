@@ -34,6 +34,7 @@ export default class Deposit {
          FROM deposits d
          JOIN users u ON d.user_id = u.id
          WHERE d.status = 'pending'
+         AND u.ban_status = 'none'
          ORDER BY d.created_at ASC`,
         (err, rows) => {
           if (err) {

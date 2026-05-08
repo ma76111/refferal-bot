@@ -608,8 +608,20 @@ export async function handleViewTasks(bot, msg) {
       message += ` 👤 ${yourTaskText[lang]}`;
     }
     message += `\n`;
+    message += `🆔 ID: ${task.id}\n`;
     message += `💰 ${task.task_type === 'paid' ? `${task.reward_per_user} USDT` : exchangeText[lang]}\n`;
     message += `👥 ${task.completed_count}/${task.required_count}`;
+    
+    // إضافة التقييم إذا كان موجوداً
+    if (!isOwner && task.owner_rating_count > 0) {
+      const ratingEmoji = task.owner_rating >= 4 ? '⭐' : task.owner_rating >= 3 ? '🌟' : '⚠️';
+      const ratingTexts = {
+        ar: `${ratingEmoji} تقييم صاحب المهمة`,
+        en: `${ratingEmoji} Task owner rating`,
+        ru: `${ratingEmoji} Рейтинг владельца`
+      };
+      message += `\n${ratingTexts[lang]}: ${task.owner_rating}/5 (${task.owner_rating_count})`;
+    }
     
     // إضافة أزرار فقط إذا لم يكن صاحب المهمة
     if (!isOwner) {

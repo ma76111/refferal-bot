@@ -57,6 +57,7 @@ import {
   handleManageAdmins,
   handleAddAdmin,
   handleRemoveAdmin,
+  handleDeleteTask,
   adminStates as adminStatesFromHandler
 } from './handlers/adminHandler.js';
 import {
@@ -920,6 +921,12 @@ bot.onText(/⚙️ لوحة التحكم|⚙️ Admin Panel|⚙️ Панель 
 bot.onText(/👥 إدارة الأدمنز/, async (msg) => {
   logCommand('👥 Manage Admins', msg.from.id, msg.from.username);
   await handleManageAdmins(bot, msg);
+});
+
+// معالج حذف مهمة (للأدمن فقط)
+bot.onText(/🗑️ حذف مهمة/, async (msg) => {
+  logCommand('🗑️ Delete Task', msg.from.id, msg.from.username);
+  await handleDeleteTask(bot, msg);
 });
 
 // معالج مراجعة الإيداعات (للأدمن فقط)

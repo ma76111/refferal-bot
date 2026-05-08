@@ -37,7 +37,8 @@ class Withdrawal {
         `SELECT w.*, u.telegram_id as user_telegram_id, u.username 
          FROM withdrawals w 
          JOIN users u ON w.user_id = u.id 
-         WHERE w.status = 'pending' 
+         WHERE w.status = 'pending'
+         AND u.ban_status = 'none'
          ORDER BY w.created_at ASC`,
         [],
         (err, rows) => {

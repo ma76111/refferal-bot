@@ -32,11 +32,15 @@ export default class Task {
       
       db.all(
         `SELECT t.*, u.username as owner_username,
-         CASE WHEN t.owner_id = ? THEN 1 ELSE 0 END as is_owner
+         CASE WHEN t.owner_id = ? THEN 1 ELSE 0 END as is_owner,
+         COALESCE(ROUND(AVG(r.rating), 1), 0) as owner_rating,
+         COUNT(r.id) as owner_rating_count
          FROM tasks t 
          JOIN users u ON t.owner_id = u.id 
+         LEFT JOIN ratings r ON r.rated_user_id = t.owner_id
          WHERE t.status = 'active' 
          AND t.completed_count < t.required_count
+         AND u.ban_status = 'none'
          AND (
            t.owner_id = ? OR
            (t.id NOT IN (
@@ -46,6 +50,7 @@ export default class Task {
              SELECT task_id FROM hidden_tasks WHERE user_id = ?
            ))
          )
+         GROUP BY t.id
          ORDER BY 
            CASE WHEN t.task_type = 'paid' THEN t.reward_per_user ELSE 0 END DESC,
            t.created_at DESC

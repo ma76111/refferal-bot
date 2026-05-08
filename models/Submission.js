@@ -35,6 +35,7 @@ export default class Submission {
          JOIN tasks t ON s.task_id = t.id
          JOIN users u ON s.user_id = u.id
          WHERE s.status = 'pending'
+         AND u.ban_status = 'none'
          ORDER BY s.created_at ASC`,
         (err, rows) => {
           if (err) {

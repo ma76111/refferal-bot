@@ -326,6 +326,54 @@ export async function handleAdminSteps(bot, msg) {
       adminStates.delete(chatId);
       break;
 
+    case 'awaiting_task_id_to_delete':
+      const taskId = parseInt(msg.text);
+      
+      if (isNaN(taskId)) {
+        await bot.sendMessage(chatId, '❌ الرجاء إرسال رقم صحيح');
+        return true;
+      }
+      
+      try {
+        const Task = (await import('../models/Task.js')).default;
+        const task = await Task.getById(taskId);
+        
+        if (!task) {
+          await bot.sendMessage(chatId, '❌ المهمة غير موجودة', getAdminKeyboard(msg.from.id));
+          adminStates.delete(chatId);
+          return true;
+        }
+        
+        // حذف المهمة
+        await Task.delete(taskId);
+        
+        logSuccess('ADMIN', `Task ${taskId} deleted by admin ${msg.from.id}`);
+        
+        await bot.sendMessage(
+          chatId,
+          `✅ تم حذف المهمة بنجاح!\n\n🆔 ID: ${taskId}\n🤖 البوت: ${task.bot_name}`,
+          getAdminKeyboard(msg.from.id)
+        );
+        
+        // إشعار صاحب المهمة
+        try {
+          const taskOwner = await User.findById(task.owner_id);
+          if (taskOwner) {
+            await bot.sendMessage(
+              taskOwner.telegram_id,
+              `⚠️ تم حذف مهمتك من قبل الإدارة\n\n🆔 ID: ${taskId}\n🤖 البوت: ${task.bot_name}\n\n💡 للاستفسار، تواصل مع الدعم`
+            );
+          }
+        } catch (err) {
+          // تجاهل الخطأ
+        }
+      } catch (error) {
+        await bot.sendMessage(chatId, '❌ حدث خطأ أثناء حذف المهمة', getAdminKeyboard(msg.from.id));
+        logError('ADMIN', 'Error deleting task', error);
+      }
+      adminStates.delete(chatId);
+      break;
+
     default:
       return false;
   }
@@ -499,6 +547,31 @@ export async function handleRemoveAdmin(bot, msg) {
   await bot.sendMessage(
     chatId,
     message,
+    {
+      reply_markup: {
+        keyboard: [['❌ إلغاء']],
+        resize_keyboard: true
+      }
+    }
+  );
+}
+
+// ============= حذف مهمة بواسطة الأدمن =============
+
+export async function handleDeleteTask(bot, msg) {
+  const chatId = msg.chat.id;
+  
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
+    await bot.sendMessage(chatId, '❌ غير مصرح لك بهذا الأمر');
+    return;
+  }
+
+  adminStates.set(chatId, { step: 'awaiting_task_id_to_delete' });
+  
+  await bot.sendMessage(
+    chatId,
+    '🗑️ حذف مهمة\n\nأرسل ID المهمة المراد حذفها:',
     {
       reply_markup: {
         keyboard: [['❌ إلغاء']],

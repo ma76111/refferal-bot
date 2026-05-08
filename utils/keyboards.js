@@ -210,7 +210,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       language: '🌐 اللغة',
       ratings: '⭐ تقييماتي',
       appeal: '📝 استئناف',
-      adminPanel: '⚙️ لوحة التحكم'
+      adminPanel: '⚙️ لوحة التحكم',
+      howItWorks: '📖 طريقة العمل'
     },
     en: {
       tasks: '📋 Available Tasks',
@@ -227,7 +228,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       language: '🌐 Language',
       ratings: '⭐ My Ratings',
       appeal: '📝 Appeal',
-      adminPanel: '⚙️ Admin Panel'
+      adminPanel: '⚙️ Admin Panel',
+      howItWorks: '📖 How It Works'
     },
     ru: {
       tasks: '📋 Доступные задачи',
@@ -244,7 +246,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
       language: '🌐 Язык',
       ratings: '⭐ Мои рейтинги',
       appeal: '📝 Апелляция',
-      adminPanel: '⚙️ Панель управления'
+      adminPanel: '⚙️ Панель управления',
+      howItWorks: '📖 Как это работает'
     }
   };
 
@@ -258,8 +261,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
           [t.info, t.myTasks],
           [t.mySubmissions, t.deposit],
           [t.withdraw, t.ratings],
-          [t.support, t.language],
-          [t.adminPanel]
+          [t.howItWorks, t.support],
+          [t.language, t.adminPanel]
         ],
         resize_keyboard: true
       }
@@ -272,8 +275,8 @@ export function getMainMenuKeyboard(isAdmin, lang = 'ar') {
           [t.info, t.myTasks],
           [t.mySubmissions, t.deposit],
           [t.withdraw, t.ratings],
-          [t.support, t.language],
-          [t.appeal]
+          [t.howItWorks, t.support],
+          [t.language, t.appeal]
         ],
         resize_keyboard: true
       }

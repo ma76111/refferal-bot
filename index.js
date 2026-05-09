@@ -242,15 +242,32 @@ bot.onText(/\/start/, async (msg) => {
   logCommand('/start', telegramId, username);
 
   try {
-    await User.create(telegramId, username);
-    logUser('REGISTER', telegramId, username);
+    // التحقق من وجود المستخدم
+    let user = await User.findByTelegramId(telegramId);
+    const isNewUser = !user;
     
-    // الحصول على لغة المستخدم
-    const user = await User.findByTelegramId(telegramId);
+    // إنشاء المستخدم إذا كان جديداً
+    if (isNewUser) {
+      await User.create(telegramId, username);
+      logUser('REGISTER', telegramId, username);
+      user = await User.findByTelegramId(telegramId);
+    }
+    
+    // إذا كان مستخدم جديد وليس لديه لغة، اعرض اختيار اللغة
+    if (isNewUser && (!user.language || user.language === 'ar')) {
+      await bot.sendMessage(
+        chatId,
+        '🌐 اختر اللغة / Choose Language / Выберите язык:',
+        userLanguageKeyboard
+      );
+      logInfo('START', `New user ${telegramId}, showing language selection`);
+      return;
+    }
+    
     const userLang = user?.language || 'ar';
     logInfo('START', `User language: ${userLang}`);
     
-    // فحص حالة المستخدم (الحظر والتقييدات) - للمستخدمين الجدد فقط
+    // فحص حالة المستخدم (الحظر والتقييدات)
     const isAdmin = await Admin.isAdmin(telegramId);
     if (user && !isAdmin) {
       const userStatus = await ViolationSystem.checkUserStatus(user.id);

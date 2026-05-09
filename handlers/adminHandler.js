@@ -417,6 +417,7 @@ export async function handleLanguageSelection(bot, query) {
     logSuccess('ADMIN', `Admin ${query.from.id} started editing support text for ${lang}`);
   } else if (query.data.startsWith('set_lang_')) {
     let user = await User.findByTelegramId(query.from.id);
+    const isNewUser = !user;
     
     // إنشاء المستخدم إذا لم يكن موجوداً
     if (!user) {
@@ -456,14 +457,27 @@ export async function handleLanguageSelection(bot, query) {
     const menu = getMainMenuKeyboard(isAdmin, lang);
     logInfo('LANGUAGE', `Generated menu for language: ${lang}`, menu);
     
-    const welcomeMessages = {
-      ar: '📋 القائمة الرئيسية',
-      en: '📋 Main Menu',
-      ru: '📋 Главное меню'
-    };
+    // إذا كان مستخدم جديد، أرسل رسالة ترحيب كاملة
+    let welcomeMessage;
+    if (isNewUser) {
+      const username = query.from.username || query.from.first_name;
+      const welcomeMessages = {
+        ar: `مرحباً ${username}! 👋\n\n🤖 هذا بوت تبادل الإحالات والمهام المدفوعة\n\n📋 يمكنك:\n• تنفيذ مهام وكسب المال\n• إضافة مهام لبوتك الخاص\n• تبادل الإحالات مع الآخرين\n\n🎁 حصلت على 6 نقاط تبادل مجانية!\n\nاستخدم القائمة أدناه للبدء 👇`,
+        en: `Welcome ${username}! 👋\n\n🤖 This is a referral exchange and paid tasks bot\n\n📋 You can:\n• Complete tasks and earn money\n• Add tasks for your own bot\n• Exchange referrals with others\n\n🎁 You got 6 free exchange points!\n\nUse the menu below to get started 👇`,
+        ru: `Добро пожаловать ${username}! 👋\n\n🤖 Это бот для обмена рефералами и платных задач\n\n📋 Вы можете:\n• Выполнять задачи и зарабатывать деньги\n• Добавлять задачи для своего бота\n• Обмениваться рефералами с другими\n\n🎁 Вы получили 6 бесплатных баллов обмена!\n\nИспользуйте меню ниже для начала 👇`
+      };
+      welcomeMessage = welcomeMessages[lang];
+    } else {
+      const menuMessages = {
+        ar: '📋 القائمة الرئيسية',
+        en: '📋 Main Menu',
+        ru: '📋 Главное меню'
+      };
+      welcomeMessage = menuMessages[lang];
+    }
     
-    logInfo('LANGUAGE', `Sending menu message: "${welcomeMessages[lang]}"`);
-    await bot.sendMessage(chatId, welcomeMessages[lang], menu);
+    logInfo('LANGUAGE', `Sending menu message: "${welcomeMessage}"`);
+    await bot.sendMessage(chatId, welcomeMessage, menu);
     logSuccess('LANGUAGE', `Menu sent successfully in ${lang} to user ${query.from.id}`);
   }
 }

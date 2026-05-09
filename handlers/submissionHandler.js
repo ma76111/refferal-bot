@@ -579,6 +579,14 @@ export async function handleReview(bot, query) {
       if (submission.task_type === 'paid') {
         await User.updateBalance(submission.user_id, submission.reward_per_user);
         logger.success(`Reward ${submission.reward_per_user} added to user ${submission.user_id}`);
+      } else if (submission.task_type === 'exchange') {
+        // إضافة نقطة تبادل للمستخدم الذي نفذ المهمة
+        await User.updateExchangePoints(submission.user_id, 1);
+        logger.success(`Exchange point +1 added to user ${submission.user_id}`);
+        
+        // خصم نقطة تبادل من صاحب المهمة
+        await User.updateExchangePoints(task.owner_id, -1);
+        logger.success(`Exchange point -1 deducted from task owner ${task.owner_id}`);
       }
 
       logger.success(`Task ${submission.task_id} count remains unchanged (already counted on submission)`);
@@ -591,9 +599,9 @@ export async function handleReview(bot, query) {
       const lang = user?.language || 'ar';
       
       const acceptMessages = {
-        ar: `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'تم احتساب إحالة'}`,
-        en: `✅ Your proof has been accepted!\n\n🆔 Submission ID: ${submissionId}\n💰 Reward: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Referral counted'}`,
-        ru: `✅ Ваше доказательство принято!\n\n🆔 ID заявки: ${submissionId}\n💰 Награда: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : 'Реферал засчитан'}`
+        ar: `✅ تم قبول إثباتك!\n\n🆔 رقم التقديم: ${submissionId}\n💰 المكافأة: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : '+1 نقطة تبادل'}`,
+        en: `✅ Your proof has been accepted!\n\n🆔 Submission ID: ${submissionId}\n💰 Reward: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : '+1 Exchange Point'}`,
+        ru: `✅ Ваше доказательство принято!\n\n🆔 ID заявки: ${submissionId}\n💰 Награда: ${submission.task_type === 'paid' ? `${submission.reward_per_user} USDT` : '+1 Балл обмена'}`
       };
 
       // إشعار المستخدم

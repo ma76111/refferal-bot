@@ -95,10 +95,13 @@ export async function handleAdminSteps(bot, msg) {
 
       // عرض كل مستخدم مع أزرار التحكم
       for (const user of users) {
+        const exchangePoints = await User.getExchangePoints(user.id);
+        
         let message = '👤 معلومات المستخدم:\n\n';
         message += `🆔 ID: ${user.telegram_id}\n`;
         message += `👤 اليوزرنيم: ${user.username ? '@' + user.username : 'غير متوفر'}\n`;
         message += `💰 المحفظة: ${user.balance} USDT\n`;
+        message += `🔄 نقاط التبادل: ${exchangePoints}\n`;
         message += `🌐 اللغة: ${user.language}\n`;
         message += `${user.is_banned ? '🔴 محظور' : '🟢 نشط'}\n`;
         message += `📅 تاريخ التسجيل: ${new Date(user.created_at).toLocaleDateString('ar')}`;
@@ -108,6 +111,9 @@ export async function handleAdminSteps(bot, msg) {
             inline_keyboard: [
               [
                 { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
+                { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+              ],
+              [
                 { text: user.is_banned ? '✅ إلغاء الحظر' : '🚫 حظر', callback_data: user.is_banned ? `admin_unban_${user.telegram_id}` : `admin_ban_${user.telegram_id}` }
               ]
             ]

@@ -9,7 +9,6 @@ import config from '../config.js';
 import logger from '../utils/logger.js';
 import { cancelKeyboard, mainMenu, reviewKeyboard, getRejectKeyboard, getReportKeyboard } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
-import { handleStateInterruption } from '../utils/stateManager.js';
 
 const submissionStates = new Map();
 const submissionTimers = new Map();
@@ -182,17 +181,6 @@ export async function handleSubmissionSteps(bot, msg) {
     
     await bot.sendMessage(chatId, messages[lang], mainMenu);
     return true;
-  }
-
-  // استخدام الدالة المركزية للتحقق من أزرار القائمة
-  if (handleStateInterruption(submissionStates, chatId, msg.text, false)) {
-    // إلغاء المؤقت أيضاً
-    const timer = submissionTimers.get(chatId);
-    if (timer) {
-      clearTimeout(timer);
-      submissionTimers.delete(chatId);
-    }
-    return false;
   }
 
   // التحقق من انتهاء الوقت
@@ -868,11 +856,6 @@ export async function handleRejectMessage(bot, msg) {
     
     await bot.sendMessage(chatId, messages[reviewerLang]);
     return true;
-  }
-
-  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
-  if (handleStateInterruption(rejectStates, chatId, msg.text, true)) {
-    return false;
   }
 
   const { submissionId, type, reviewerId } = state;

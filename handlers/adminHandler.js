@@ -4,7 +4,6 @@ import Settings from '../models/Settings.js';
 import config from '../config.js';
 import { adminMenu, getMainMenuKeyboard, languageKeyboard, adminPanelKeyboard, mainAdminPanelKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logWarning, logError } from '../utils/logger.js';
-import { handleStateInterruption } from '../utils/stateManager.js';
 
 const adminStates = new Map();
 
@@ -84,9 +83,19 @@ export async function handleAdminSteps(bot, msg) {
     return true;
   }
 
-  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
-  if (handleStateInterruption(adminStates, chatId, msg.text, true)) {
-    return false;
+  // تجاهل أزرار لوحة التحكم عندما يكون في حالة انتظار
+  const adminButtons = [
+    '✅ مراجعة المهام', '💵 مراجعة الإيداعات', '💸 مراجعة السحوبات',
+    '🔍 البحث عن مستخدم', '✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص',
+    '📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة', '🔄 تغيير مهلة التحسين',
+    '💰 تغيير الحد الأدنى للمكافأة', '💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات',
+    '📢 رسالة جماعية', '📋 الاستئنافات', '👥 إدارة الأدمنز', '🗑️ حذف مهمة', '🔙 رجوع'
+  ];
+  
+  if (adminButtons.includes(msg.text)) {
+    // إلغاء الحالة الحالية والسماح بمعالجة الزر الجديد
+    adminStates.delete(chatId);
+    return false; // السماح لمعالجات الأزرار الأخرى بالعمل
   }
 
   switch (state.step) {

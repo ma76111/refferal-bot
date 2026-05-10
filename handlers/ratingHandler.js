@@ -3,7 +3,6 @@ import User from '../models/User.js';
 import Task from '../models/Task.js';
 import Submission from '../models/Submission.js';
 import { logInfo, logSuccess, logError, logWarning } from '../utils/logger.js';
-import { handleStateInterruption } from '../utils/stateManager.js';
 
 const ratingStates = new Map();
 
@@ -176,11 +175,6 @@ export async function handleRatingComment(bot, msg) {
   const state = ratingStates.get(chatId);
   
   if (!state || state.step !== 'awaiting_comment') return false;
-  
-  // استخدام الدالة المركزية للتحقق من أزرار القائمة
-  if (handleStateInterruption(ratingStates, chatId, msg.text, false)) {
-    return false;
-  }
   
   const comment = msg.text;
   

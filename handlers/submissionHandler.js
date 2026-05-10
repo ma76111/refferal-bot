@@ -126,8 +126,11 @@ export async function handleStartSubmission(bot, msg, taskId) {
   // إنشاء مؤقت للتحقق من انتهاء الوقت
   const timer = setTimeout(async () => {
     const currentState = submissionStates.get(chatId);
-    if (currentState && currentState.taskId === taskId) {
+    // التحقق من أن الحالة لا تزال موجودة ومطابقة لنفس المهمة
+    if (currentState && currentState.taskId === taskId && currentState.startTime === startTime) {
       logger.warning(`Submission timeout for task ${taskId} by user ${user.id}`);
+      
+      // حذف الحالة والمؤقت
       submissionStates.delete(chatId);
       submissionTimers.delete(chatId);
       
@@ -139,6 +142,9 @@ export async function handleStartSubmission(bot, msg, taskId) {
       };
       
       await bot.sendMessage(chatId, messages[lang], mainMenu);
+    } else {
+      // الحالة تم حذفها بالفعل (تم الإلغاء أو الإرسال)
+      logger.info(`Timer triggered but state already cleared for chat ${chatId}`);
     }
   }, timeoutSeconds * 1000);
 

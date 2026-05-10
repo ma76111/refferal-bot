@@ -6,7 +6,6 @@ import logger from '../utils/logger.js';
 import BinanceAPI from '../utils/binanceApi.js';
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu, depositReviewKeyboard } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
-import { handleStateInterruption } from '../utils/stateManager.js';
 
 const depositStates = new Map();
 const MIN_DEPOSIT = 0.1;
@@ -95,9 +94,17 @@ export async function handleDepositSteps(bot, msg) {
     return true;
   }
 
-  // استخدام الدالة المركزية للتحقق من أزرار القائمة
-  if (handleStateInterruption(depositStates, chatId, msg.text, false)) {
-    return false;
+  // تجاهل أزرار القائمة الرئيسية عندما يكون في حالة انتظار
+  const menuButtons = [
+    '📋 مهامي', '➕ إضافة مهمة', '💰 محفظتي', '💵 إيداع', '💸 سحب',
+    'ℹ️ معلوماتي', '📞 الدعم', '🌐 تغيير اللغة', '⚙️ لوحة التحكم',
+    '📖 طريقة العمل'
+  ];
+  
+  if (menuButtons.includes(msg.text)) {
+    // إلغاء الحالة الحالية والسماح بمعالجة الزر الجديد
+    depositStates.delete(chatId);
+    return false; // السماح لمعالجات الأزرار الأخرى بالعمل
   }
 
   switch (state.step) {
@@ -430,11 +437,6 @@ export async function handleDepositRejectReason(bot, msg) {
     depositRejectStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', adminMenu);
     return true;
-  }
-
-  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
-  if (handleStateInterruption(depositRejectStates, chatId, msg.text, true)) {
-    return false;
   }
 
   const reason = msg.text;

@@ -6,7 +6,6 @@ import config from '../config.js';
 import logger from '../utils/logger.js';
 import { getTaskTypeKeyboard, getProofTypeKeyboard, cancelKeyboard, mainMenu, adminMenu, getMainMenuKeyboard } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
-import { handleStateInterruption } from '../utils/stateManager.js';
 
 const userStates = new Map();
 
@@ -140,8 +139,16 @@ export async function handleTaskCreationSteps(bot, msg) {
     return true;
   }
 
-  // استخدام الدالة المركزية للتحقق من أزرار القائمة
-  if (handleStateInterruption(userStates, chatId, msg.text, false)) {
+  // تجاهل أزرار القائمة الرئيسية عندما يكون في حالة انتظار
+  const menuButtons = [
+    '📋 مهامي', '➕ إضافة مهمة', '💰 محفظتي', '💵 إيداع', '💸 سحب',
+    'ℹ️ معلوماتي', '📞 الدعم', '🌐 تغيير اللغة', '⚙️ لوحة التحكم',
+    '📖 طريقة العمل'
+  ];
+  
+  if (menuButtons.includes(msg.text)) {
+    // إلغاء الحالة الحالية والسماح بمعالجة الزر الجديد
+    userStates.delete(chatId);
     return false; // السماح لمعالجات الأزرار الأخرى بالعمل
   }
 

@@ -83,6 +83,21 @@ export async function handleAdminSteps(bot, msg) {
     return true;
   }
 
+  // تجاهل أزرار لوحة التحكم عندما يكون في حالة انتظار
+  const adminButtons = [
+    '✅ مراجعة المهام', '💵 مراجعة الإيداعات', '💸 مراجعة السحوبات',
+    '🔍 البحث عن مستخدم', '✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص',
+    '📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة', '🔄 تغيير مهلة التحسين',
+    '💰 تغيير الحد الأدنى للمكافأة', '💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات',
+    '📢 رسالة جماعية', '📋 الاستئنافات', '👥 إدارة الأدمنز', '🗑️ حذف مهمة', '🔙 رجوع'
+  ];
+  
+  if (adminButtons.includes(msg.text)) {
+    // إلغاء الحالة الحالية والسماح بمعالجة الزر الجديد
+    adminStates.delete(chatId);
+    return false; // السماح لمعالجات الأزرار الأخرى بالعمل
+  }
+
   switch (state.step) {
     case 'awaiting_search_query':
       const users = await User.searchByIdOrUsername(msg.text);

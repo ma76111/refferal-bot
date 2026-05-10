@@ -4,6 +4,7 @@ import config from '../config.js';
 import { adminPanelKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logError, logWarning } from '../utils/logger.js';
 import Admin from '../models/Admin.js';
+import { handleStateInterruption } from '../utils/stateManager.js';
 
 const broadcastStates = new Map();
 
@@ -80,6 +81,11 @@ export async function handleBroadcastMessage(bot, msg) {
     broadcastStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء الرسالة الجماعية', adminPanelKeyboard);
     return true;
+  }
+  
+  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
+  if (handleStateInterruption(broadcastStates, chatId, msg.text, true)) {
+    return false;
   }
   
   const message = msg.text;

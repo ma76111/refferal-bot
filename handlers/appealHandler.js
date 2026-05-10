@@ -6,6 +6,7 @@ import config from '../config.js';
 import { adminPanelKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logError, logWarning } from '../utils/logger.js';
 import Admin from '../models/Admin.js';
+import { handleStateInterruption } from '../utils/stateManager.js';
 
 const appealStates = new Map();
 
@@ -84,6 +85,11 @@ export async function handleAppealReason(bot, msg) {
     appealStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء الاستئناف');
     return true;
+  }
+  
+  // استخدام الدالة المركزية للتحقق من أزرار القائمة
+  if (handleStateInterruption(appealStates, chatId, msg.text, false)) {
+    return false;
   }
   
   const reason = msg.text;
@@ -261,6 +267,11 @@ export async function handleAppealRejectNote(bot, msg) {
     appealStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', adminPanelKeyboard);
     return true;
+  }
+  
+  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
+  if (handleStateInterruption(appealStates, chatId, msg.text, true)) {
+    return false;
   }
   
   const note = msg.text;

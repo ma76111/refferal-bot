@@ -6,6 +6,7 @@ import logger from '../utils/logger.js';
 import BinanceAPI from '../utils/binanceApi.js';
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu, depositReviewKeyboard } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
+import { handleStateInterruption } from '../utils/stateManager.js';
 
 const depositStates = new Map();
 const MIN_DEPOSIT = 0.1;
@@ -92,6 +93,11 @@ export async function handleDepositSteps(bot, msg) {
     const isAdmin = await Admin.isAdmin(msg.from.id);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', isAdmin ? adminMenu : mainMenu);
     return true;
+  }
+
+  // استخدام الدالة المركزية للتحقق من أزرار القائمة
+  if (handleStateInterruption(depositStates, chatId, msg.text, false)) {
+    return false;
   }
 
   switch (state.step) {
@@ -424,6 +430,11 @@ export async function handleDepositRejectReason(bot, msg) {
     depositRejectStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', adminMenu);
     return true;
+  }
+
+  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
+  if (handleStateInterruption(depositRejectStates, chatId, msg.text, true)) {
+    return false;
   }
 
   const reason = msg.text;

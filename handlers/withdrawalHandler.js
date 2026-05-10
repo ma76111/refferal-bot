@@ -5,6 +5,7 @@ import config from '../config.js';
 import { logInfo, logSuccess, logError, logWarning, logCallback } from '../utils/logger.js';
 import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
+import { handleStateInterruption } from '../utils/stateManager.js';
 
 const withdrawalStates = new Map();
 
@@ -112,6 +113,11 @@ export async function handleWithdrawalSteps(bot, msg) {
     };
     await bot.sendMessage(chatId, cancelMessages[lang], isAdmin ? adminMenu : mainMenu);
     return true;
+  }
+
+  // استخدام الدالة المركزية للتحقق من أزرار القائمة
+  if (handleStateInterruption(withdrawalStates, chatId, msg.text, false)) {
+    return false;
   }
 
   switch (state.step) {
@@ -479,6 +485,11 @@ export async function handleWithdrawalRejectReason(bot, msg) {
     withdrawalRejectStates.delete(chatId);
     await bot.sendMessage(chatId, '❌ تم إلغاء العملية', adminMenu);
     return true;
+  }
+
+  // استخدام الدالة المركزية للتحقق من أزرار لوحة التحكم
+  if (handleStateInterruption(withdrawalRejectStates, chatId, msg.text, true)) {
+    return false;
   }
 
   const reason = msg.text;

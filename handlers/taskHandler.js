@@ -6,6 +6,7 @@ import config from '../config.js';
 import logger from '../utils/logger.js';
 import { getTaskTypeKeyboard, getProofTypeKeyboard, cancelKeyboard, mainMenu, adminMenu, getMainMenuKeyboard } from '../utils/keyboards.js';
 import Admin from '../models/Admin.js';
+import { handleStateInterruption } from '../utils/stateManager.js';
 
 const userStates = new Map();
 
@@ -137,6 +138,11 @@ export async function handleTaskCreationSteps(bot, msg) {
     };
     await bot.sendMessage(chatId, cancelMessages[lang], mainMenu);
     return true;
+  }
+
+  // استخدام الدالة المركزية للتحقق من أزرار القائمة
+  if (handleStateInterruption(userStates, chatId, msg.text, false)) {
+    return false; // السماح لمعالجات الأزرار الأخرى بالعمل
   }
 
   switch (state.step) {

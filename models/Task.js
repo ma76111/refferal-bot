@@ -297,4 +297,56 @@ export default class Task {
       );
     });
   }
+
+  // حذف المهام التي مر عليها أكثر من 7 أيام
+  static deleteExpiredTasks() {
+    return new Promise((resolve, reject) => {
+      logInfo('TASK', 'Checking for expired tasks (older than 7 days)');
+      
+      // حساب التاريخ قبل 7 أيام
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString();
+      
+      // أولاً: الحصول على المهام المنتهية لإرجاع النقاط/الأموال
+      db.all(
+        `SELECT t.*, u.telegram_id as owner_telegram_id 
+         FROM tasks t 
+         JOIN users u ON t.owner_id = u.id
+         WHERE t.created_at < ? AND t.status = 'active'`,
+        [sevenDaysAgoStr],
+        (err, expiredTasks) => {
+          if (err) {
+            logError('TASK', 'Failed to fetch expired tasks', err);
+            reject(err);
+            return;
+          }
+          
+          if (!expiredTasks || expiredTasks.length === 0) {
+            logInfo('TASK', 'No expired tasks found');
+            resolve({ deletedCount: 0, tasks: [] });
+            return;
+          }
+          
+          logInfo('TASK', `Found ${expiredTasks.length} expired tasks`);
+          
+          // حذف المهام المنتهية
+          db.run(
+            'DELETE FROM tasks WHERE created_at < ? AND status = "active"',
+            [sevenDaysAgoStr],
+            function(err) {
+              if (err) {
+                logError('TASK', 'Failed to delete expired tasks', err);
+                reject(err);
+              } else {
+                logSuccess('TASK', `Deleted ${this.changes} expired tasks`);
+                logDatabase('DELETE', 'tasks', { count: this.changes, reason: 'expired' });
+                resolve({ deletedCount: this.changes, tasks: expiredTasks });
+              }
+            }
+          );
+        }
+      );
+    });
+  }
 }

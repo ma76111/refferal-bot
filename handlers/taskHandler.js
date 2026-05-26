@@ -926,7 +926,8 @@ export async function handleTaskConfirmation(bot, query) {
           taskId: 'رقم المهمة',
           deducted: 'تم خصم',
           newBalance: 'رصيدك الجديد',
-          backButton: 'رجوع للقائمة الرئيسية'
+          backButton: 'رجوع للقائمة الرئيسية',
+          expiryNote: '\n\n⏰ ملاحظة هامة: ستنتهي صلاحية المهمة تلقائياً بعد 7 أيام من إنشائها'
         },
         en: {
           created: 'Task created successfully',
@@ -937,7 +938,8 @@ export async function handleTaskConfirmation(bot, query) {
           taskId: 'Task ID',
           deducted: 'Deducted',
           newBalance: 'Your new balance',
-          backButton: 'Back to main menu'
+          backButton: 'Back to main menu',
+          expiryNote: '\n\n⏰ Important note: Task will automatically expire after 7 days from creation'
         },
         ru: {
           created: 'Задача успешно создана',
@@ -948,7 +950,8 @@ export async function handleTaskConfirmation(bot, query) {
           taskId: 'ID задачи',
           deducted: 'Списано',
           newBalance: 'Ваш новый баланс',
-          backButton: 'Вернуться в главное меню'
+          backButton: 'Вернуться в главное меню',
+          expiryNote: '\n\n⏰ Важное примечание: Задача автоматически истечет через 7 дней после создания'
         }
       };
 
@@ -967,6 +970,9 @@ export async function handleTaskConfirmation(bot, query) {
         const updatedUser = await User.findById(state.userId);
         message += `\n\n💸 ${t.deducted}: ${totalCost.toFixed(2)} USDT\n💰 ${t.newBalance}: ${updatedUser.balance.toFixed(2)} USDT`;
       }
+      
+      // إضافة ملاحظة انتهاء الصلاحية
+      message += t.expiryNote;
 
       await bot.editMessageText(message, { 
         chat_id: chatId, 

@@ -2598,6 +2598,85 @@ bot.on('polling_error', (error) => {
   logError('POLLING', 'Polling error occurred', error);
 });
 
+// جدولة حذف المهام المنتهية (كل 6 ساعات)
+const deleteExpiredTasksInterval = 6 * 60 * 60 * 1000; // 6 ساعات بالميلي ثانية
+
+async function checkAndDeleteExpiredTasks() {
+  try {
+    logInfo('TASK_CLEANUP', 'Running expired tasks cleanup...');
+    const result = await Task.deleteExpiredTasks();
+    
+    if (result.deletedCount > 0) {
+      logSuccess('TASK_CLEANUP', `Deleted ${result.deletedCount} expired tasks`);
+      
+      // إرجاع الأموال/النقاط لأصحاب المهام المحذوفة
+      for (const task of result.tasks) {
+        try {
+          if (task.task_type === 'paid') {
+            // إرجاع المبلغ المتبقي للمهام المدفوعة
+            const remainingAmount = (task.required_count - task.completed_count) * task.reward_per_user;
+            if (remainingAmount > 0) {
+              await User.updateBalance(task.owner_id, remainingAmount);
+              logSuccess('TASK_CLEANUP', `Refunded ${remainingAmount} USDT to user ${task.owner_id} for expired task ${task.id}`);
+            }
+          } else {
+            // إرجاع نقاط التبادل المتبقية
+            const remainingPoints = task.required_count - task.completed_count;
+            if (remainingPoints > 0) {
+              await User.updateExchangePoints(task.owner_id, remainingPoints);
+              logSuccess('TASK_CLEANUP', `Refunded ${remainingPoints} exchange points to user ${task.owner_id} for expired task ${task.id}`);
+            }
+          }
+          
+          // إرسال إشعار لصاحب المهمة
+          const messages = {
+            ar: `⏰ انتهت صلاحية مهمتك\n\n🤖 البوت: ${task.bot_name}\n🆔 رقم المهمة: ${task.id}\n\n📝 السبب: مر أكثر من 7 أيام على إنشاء المهمة\n\n`,
+            en: `⏰ Your task has expired\n\n🤖 Bot: ${task.bot_name}\n🆔 Task ID: ${task.id}\n\n📝 Reason: More than 7 days have passed since task creation\n\n`,
+            ru: `⏰ Срок действия вашей задачи истек\n\n🤖 Бот: ${task.bot_name}\n🆔 ID задачи: ${task.id}\n\n📝 Причина: Прошло более 7 дней с момента создания задачи\n\n`
+          };
+          
+          const user = await User.findById(task.owner_id);
+          const lang = user?.language || 'ar';
+          let message = messages[lang];
+          
+          if (task.task_type === 'paid') {
+            const remainingAmount = (task.required_count - task.completed_count) * task.reward_per_user;
+            const refundMessages = {
+              ar: `💰 تم إرجاع ${remainingAmount.toFixed(2)} USDT إلى محفظتك`,
+              en: `💰 ${remainingAmount.toFixed(2)} USDT has been refunded to your wallet`,
+              ru: `💰 ${remainingAmount.toFixed(2)} USDT возвращено на ваш кошелек`
+            };
+            message += refundMessages[lang];
+          } else {
+            const remainingPoints = task.required_count - task.completed_count;
+            const refundMessages = {
+              ar: `🔄 تم إرجاع ${remainingPoints} نقطة تبادل`,
+              en: `🔄 ${remainingPoints} exchange points have been refunded`,
+              ru: `🔄 ${remainingPoints} баллов обмена возвращено`
+            };
+            message += refundMessages[lang];
+          }
+          
+          await bot.sendMessage(task.owner_telegram_id, message);
+        } catch (error) {
+          logError('TASK_CLEANUP', `Failed to process expired task ${task.id}`, error);
+        }
+      }
+    } else {
+      logInfo('TASK_CLEANUP', 'No expired tasks found');
+    }
+  } catch (error) {
+    logError('TASK_CLEANUP', 'Failed to delete expired tasks', error);
+  }
+}
+
+// تشغيل الفحص عند بدء البوت
+checkAndDeleteExpiredTasks();
+
+// جدولة الفحص كل 6 ساعات
+setInterval(checkAndDeleteExpiredTasks, deleteExpiredTasksInterval);
+logInfo('TASK_CLEANUP', 'Expired tasks cleanup scheduled (every 6 hours)');
+
 process.on('SIGINT', () => {
   logSeparator();
   logInfo('SHUTDOWN', '👋 إيقاف البوت...');

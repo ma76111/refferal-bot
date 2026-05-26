@@ -4,7 +4,7 @@ export default class User {
   static create(telegramId, username) {
     return new Promise((resolve, reject) => {
       db.run(
-        'INSERT OR IGNORE INTO users (telegram_id, username, exchange_points) VALUES (?, ?, 6)',
+        'INSERT OR IGNORE INTO users (telegram_id, username, exchange_points) VALUES (?, ?, 0)',
         [telegramId, username],
         function(err) {
           if (err) reject(err);

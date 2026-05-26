@@ -483,9 +483,9 @@ export async function handleLanguageSelection(bot, query) {
     if (isNewUser) {
       const username = query.from.username || query.from.first_name;
       const welcomeMessages = {
-        ar: `مرحباً ${username}! 👋\n\n🤖 هذا بوت تبادل الإحالات والمهام المدفوعة\n\n📋 يمكنك:\n• تنفيذ مهام وكسب المال\n• إضافة مهام لبوتك الخاص\n• تبادل الإحالات مع الآخرين\n\n🎁 حصلت على 6 نقاط تبادل مجانية!\n\nاستخدم القائمة أدناه للبدء 👇`,
-        en: `Welcome ${username}! 👋\n\n🤖 This is a referral exchange and paid tasks bot\n\n📋 You can:\n• Complete tasks and earn money\n• Add tasks for your own bot\n• Exchange referrals with others\n\n🎁 You got 6 free exchange points!\n\nUse the menu below to get started 👇`,
-        ru: `Добро пожаловать ${username}! 👋\n\n🤖 Это бот для обмена рефералами и платных задач\n\n📋 Вы можете:\n• Выполнять задачи и зарабатывать деньги\n• Добавлять задачи для своего бота\n• Обмениваться рефералами с другими\n\n🎁 Вы получили 6 бесплатных баллов обмена!\n\nИспользуйте меню ниже для начала 👇`
+        ar: `مرحباً ${username}! 👋\n\n🤖 هذا بوت تبادل الإحالات والمهام المدفوعة\n\n📋 يمكنك:\n• تنفيذ مهام وكسب المال\n• إضافة مهام لبوتك الخاص\n• تبادل الإحالات مع الآخرين\n\nاستخدم القائمة أدناه للبدء 👇`,
+        en: `Welcome ${username}! 👋\n\n🤖 This is a referral exchange and paid tasks bot\n\n📋 You can:\n• Complete tasks and earn money\n• Add tasks for your own bot\n• Exchange referrals with others\n\nUse the menu below to get started 👇`,
+        ru: `Добро пожаловать ${username}! 👋\n\n🤖 Это бот для обмена рефералами и платных задач\n\n📋 Вы можете:\n• Выполнять задачи и зарабатывать деньги\n• Добавлять задачи для своего бота\n• Обмениваться рефералами с другими\n\nИспользуйте меню ниже для начала 👇`
       };
       welcomeMessage = welcomeMessages[lang];
     } else {

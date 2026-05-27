@@ -905,19 +905,31 @@ export async function handleRejectMessage(bot, msg) {
             `🤖 المهمة: ${submission.bot_name}\n\n` +
             `📝 سبب الرفض:\n${rejectMessage}\n\n` +
             `💡 يمكنك تحسين الإثبات والمحاولة مرة أخرى\n` +
-            `⏰ المهلة المتاحة: ${timeoutMinutes} دقيقة`,
+            `⏰ المهلة المتاحة: ${timeoutMinutes} دقيقة\n\n` +
+            `📌 لتحسين الإثبات:\n` +
+            `1️⃣ اضغط على "📋 إثباتاتي"\n` +
+            `2️⃣ اختر المهمة حسب رقم التقديم: ${submissionId}\n` +
+            `3️⃣ اضغط على "🔄 تحسين الإثباتات"`,
         en: `⚠️ Your proof was rejected with the ability to retry\n\n` +
             `🆔 Submission ID: ${submissionId}\n` +
             `🤖 Task: ${submission.bot_name}\n\n` +
             `📝 Rejection reason:\n${rejectMessage}\n\n` +
             `💡 You can improve the proof and try again\n` +
-            `⏰ Available time: ${timeoutMinutes} minutes`,
+            `⏰ Available time: ${timeoutMinutes} minutes\n\n` +
+            `📌 To improve the proof:\n` +
+            `1️⃣ Click "📋 My Submissions"\n` +
+            `2️⃣ Select the task by submission ID: ${submissionId}\n` +
+            `3️⃣ Click "🔄 Improve Proof"`,
         ru: `⚠️ Ваше доказательство было отклонено с возможностью повторной попытки\n\n` +
             `🆔 ID заявки: ${submissionId}\n` +
             `🤖 Задача: ${submission.bot_name}\n\n` +
             `📝 Причина отклонения:\n${rejectMessage}\n\n` +
             `💡 Вы можете улучшить доказательство и попробовать снова\n` +
-            `⏰ Доступное время: ${timeoutMinutes} минут`
+            `⏰ Доступное время: ${timeoutMinutes} минут\n\n` +
+            `📌 Чтобы улучшить доказательство:\n` +
+            `1️⃣ Нажмите "📋 Мои заявки"\n` +
+            `2️⃣ Выберите задачу по ID заявки: ${submissionId}\n` +
+            `3️⃣ Нажмите "🔄 Улучшить доказательство"`
       };
       
       await bot.sendMessage(submission.user_telegram_id, userMessages[submitterLang]);

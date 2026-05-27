@@ -2059,13 +2059,13 @@ bot.on('callback_query', async (query) => {
     
     await bot.sendMessage(query.message.chat.id, messages[lang]);
 
-    // بدء عملية تقديم جديدة لنفس المهمة
+    // بدء عملية تقديم جديدة لنفس المهمة (مع تمرير isImprovement = true)
     const fakeMsg = {
       chat: query.message.chat,
       from: query.from
     };
     
-    await handleStartSubmission(bot, fakeMsg, submission.task_id);
+    await handleStartSubmission(bot, fakeMsg, submission.task_id, true);
     return;
   }
 

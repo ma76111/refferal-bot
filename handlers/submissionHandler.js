@@ -14,11 +14,11 @@ const submissionStates = new Map();
 const submissionTimers = new Map();
 const rejectStates = new Map(); // لحفظ حالة الرفض مع الرسالة
 
-export async function handleStartSubmission(bot, msg, taskId) {
+export async function handleStartSubmission(bot, msg, taskId, isImprovement = false) {
   const chatId = msg.chat.id;
   const user = await User.findByTelegramId(msg.from.id);
   
-  logger.user(`User ${msg.from.id} starting submission for task ${taskId}`);
+  logger.user(`User ${msg.from.id} starting submission for task ${taskId}${isImprovement ? ' (improvement)' : ''}`);
   
   if (!user) {
     logger.warning(`User ${msg.from.id} not found`);
@@ -51,17 +51,20 @@ export async function handleStartSubmission(bot, msg, taskId) {
     return;
   }
 
-  const hasSubmitted = await Submission.hasSubmitted(taskId, user.id);
-  
-  if (hasSubmitted) {
-    logger.warning(`User ${user.id} already submitted for task ${taskId}`);
-    const messages = {
-      ar: '⚠️ لقد قمت بتنفيذ هذه المهمة من قبل',
-      en: '⚠️ You have already completed this task',
-      ru: '⚠️ Вы уже выполнили эту задачу'
-    };
-    await bot.sendMessage(chatId, messages[lang]);
-    return;
+  // تجاوز فحص التقديم السابق في حالة التحسين
+  if (!isImprovement) {
+    const hasSubmitted = await Submission.hasSubmitted(taskId, user.id);
+    
+    if (hasSubmitted) {
+      logger.warning(`User ${user.id} already submitted for task ${taskId}`);
+      const messages = {
+        ar: '⚠️ لقد قمت بتنفيذ هذه المهمة من قبل',
+        en: '⚠️ You have already completed this task',
+        ru: '⚠️ Вы уже выполнили эту задачу'
+      };
+      await bot.sendMessage(chatId, messages[lang]);
+      return;
+    }
   }
 
   // الحصول على وقت المهلة

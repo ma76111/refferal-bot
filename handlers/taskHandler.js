@@ -584,11 +584,11 @@ export async function handleProofType(bot, query) {
   await bot.answerCallbackQuery(query.id);
 }
 
-export async function handleViewTasks(bot, msg) {
+export async function handleViewTasks(bot, msg, page = 0) {
   const chatId = msg.chat.id;
   const user = await User.findByTelegramId(msg.from.id);
   
-  logger.user(`User ${msg.from.id} viewing tasks`);
+  logger.user(`User ${msg.from.id} viewing tasks (page ${page})`);
   
   if (!user) {
     logger.warning(`User ${msg.from.id} not found`);
@@ -596,10 +596,10 @@ export async function handleViewTasks(bot, msg) {
   }
 
   const lang = user.language || 'ar';
-  const tasks = await Task.getActiveTasks(user.id);
-  logger.info(`Found ${tasks.length} active tasks for user ${user.id}`);
+  const allTasks = await Task.getActiveTasks(user.id);
+  logger.info(`Found ${allTasks.length} active tasks for user ${user.id}`);
 
-  if (tasks.length === 0) {
+  if (allTasks.length === 0) {
     const messages = {
       ar: '❌ لا توجد مهام متاحة حالياً',
       en: '❌ No tasks available currently',
@@ -609,10 +609,18 @@ export async function handleViewTasks(bot, msg) {
     return;
   }
 
+  // إعدادات الترقيم
+  const tasksPerPage = 10;
+  const totalPages = Math.ceil(allTasks.length / tasksPerPage);
+  const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+  const startIndex = currentPage * tasksPerPage;
+  const endIndex = Math.min(startIndex + tasksPerPage, allTasks.length);
+  const tasks = allTasks.slice(startIndex, endIndex);
+
   const headers = {
-    ar: '📋 المهام المتاحة (مرتبة حسب أعلى مكافأة):',
-    en: '📋 Available Tasks (sorted by highest reward):',
-    ru: '📋 Доступные задачи (отсортированы по наибольшей награде):'
+    ar: `📋 المهام المتاحة (صفحة ${currentPage + 1}/${totalPages}):\n\n💡 مرتبة حسب أعلى مكافأة`,
+    en: `📋 Available Tasks (page ${currentPage + 1}/${totalPages}):\n\n💡 Sorted by highest reward`,
+    ru: `📋 Доступные задачи (страница ${currentPage + 1}/${totalPages}):\n\n💡 Отсортированы по наибольшей награде`
   };
 
   const yourTaskText = {
@@ -639,6 +647,18 @@ export async function handleViewTasks(bot, msg) {
     ru: '❌ Скрыть задачу'
   };
 
+  const nextText = {
+    ar: '⏭️ التالي',
+    en: '⏭️ Next',
+    ru: '⏭️ Следующая'
+  };
+
+  const prevText = {
+    ar: '⏮️ السابق',
+    en: '⏮️ Previous',
+    ru: '⏮️ Предыдущая'
+  };
+
   // إرسال رسالة العنوان
   await bot.sendMessage(chatId, headers[lang]);
   
@@ -646,8 +666,9 @@ export async function handleViewTasks(bot, msg) {
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
     const isOwner = task.is_owner === 1;
+    const globalIndex = startIndex + i + 1;
     
-    let message = `${i + 1}. 🤖 ${task.bot_name}`;
+    let message = `${globalIndex}. 🤖 ${task.bot_name}`;
     if (isOwner) {
       message += ` 👤 ${yourTaskText[lang]}`;
     }
@@ -695,6 +716,33 @@ export async function handleViewTasks(bot, msg) {
     } else {
       // إرسال بدون أزرار إذا كان صاحب المهمة
       await bot.sendMessage(chatId, message);
+    }
+  }
+
+  // إضافة أزرار التنقل بين الصفحات
+  if (totalPages > 1) {
+    const navigationButtons = [];
+    
+    if (currentPage > 0) {
+      navigationButtons.push({ text: prevText[lang], callback_data: `tasks_page_${currentPage - 1}` });
+    }
+    
+    if (currentPage < totalPages - 1) {
+      navigationButtons.push({ text: nextText[lang], callback_data: `tasks_page_${currentPage + 1}` });
+    }
+    
+    if (navigationButtons.length > 0) {
+      const navMessages = {
+        ar: `📄 الصفحة ${currentPage + 1} من ${totalPages}`,
+        en: `📄 Page ${currentPage + 1} of ${totalPages}`,
+        ru: `📄 Страница ${currentPage + 1} из ${totalPages}`
+      };
+      
+      await bot.sendMessage(chatId, navMessages[lang], {
+        reply_markup: {
+          inline_keyboard: [navigationButtons]
+        }
+      });
     }
   }
 }

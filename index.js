@@ -2146,6 +2146,21 @@ bot.on('callback_query', async (query) => {
     return;
   }
 
+  // معالج أزرار التنقل بين صفحات المهام
+  if (data.startsWith('tasks_page_')) {
+    const page = parseInt(data.split('_')[2]);
+    await bot.answerCallbackQuery(query.id);
+    
+    // إنشاء كائن msg مشابه للرسالة العادية
+    const fakeMsg = {
+      chat: query.message.chat,
+      from: query.from
+    };
+    
+    await handleViewTasks(bot, fakeMsg, page);
+    return;
+  }
+
   if (data.startsWith('execute_task_')) {
     const taskId = parseInt(data.split('_')[2]);
     await bot.answerCallbackQuery(query.id);

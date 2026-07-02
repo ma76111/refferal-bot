@@ -1,97 +1,83 @@
-import Withdrawal from '../models/Withdrawal.js';
 import User from '../models/User.js';
-import Settings from '../models/Settings.js';
-import config from '../config.js';
-import { logInfo, logSuccess, logError, logWarning, logCallback } from '../utils/logger.js';
-import { depositMethodKeyboard, cancelKeyboard, mainMenu, adminMenu } from '../utils/keyboards.js';
+import Withdrawal from '../models/Withdrawal.js';
 import Admin from '../models/Admin.js';
+import Settings from '../models/Settings.js';
+import { logInfo, logSuccess, logError } from '../utils/logger.js';
+import { mainMenu, adminMenu, cancelKeyboard } from '../utils/keyboards.js';
 
 const withdrawalStates = new Map();
+const withdrawalRejectStates = new Map();
 
 export async function handleStartWithdrawal(bot, msg) {
   const chatId = msg.chat.id;
   const user = await User.findByTelegramId(msg.from.id);
   
-  logInfo('WITHDRAWAL', `User ${msg.from.id} initiated withdrawal flow`);
-  
-  if (!user) {
-    logWarning('WITHDRAWAL', `User ${msg.from.id} not found`);
-    return;
-  }
+  if (!user) return;
 
-  const balance = await User.getBalance(user.id);
   const lang = user.language || 'ar';
+  const balance = await User.getBalance(user.id);
   const minWithdrawal = await Settings.getMinWithdrawal();
 
   if (balance < minWithdrawal) {
     const messages = {
-      ar: `❌ رصيدك غير كافٍ للسحب\n\n👛 رصيدك الحالي: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${minWithdrawal} USDT`,
-      en: `❌ Insufficient balance for withdrawal\n\n👛 Your current balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${minWithdrawal} USDT`,
-      ru: `❌ Недостаточно средств для вывода\n\n👛 Ваш текущий баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${minWithdrawal} USDT`
+      ar: `❌ رصيدك غير كافٍ للسحب\n\n👛 رصيدك: ${balance.toFixed(2)} USDT\n💸 الحد الأدنى للسحب: ${minWithdrawal} USDT`,
+      en: `❌ Your balance is insufficient for withdrawal\n\n👛 Your balance: ${balance.toFixed(2)} USDT\n💸 Minimum withdrawal: ${minWithdrawal} USDT`,
+      ru: `❌ Ваш баланс недостаточен для вывода\n\n👛 Ваш баланс: ${balance.toFixed(2)} USDT\n💸 Минимальный вывод: ${minWithdrawal} USDT`
     };
     await bot.sendMessage(chatId, messages[lang]);
     return;
   }
 
-  const selectMethodMessages = {
-    ar: `💸 سحب USDT\n\n👛 رصيدك: ${balance.toFixed(2)} USDT\n💰 الحد الأدنى للسحب: ${minWithdrawal} USDT\n\nاختر طريقة السحب:`,
-    en: `💸 Withdraw USDT\n\n👛 Your balance: ${balance.toFixed(2)} USDT\n💰 Minimum withdrawal: ${minWithdrawal} USDT\n\nSelect withdrawal method:`,
-    ru: `💸 Вывод USDT\n\n👛 Ваш баланс: ${balance.toFixed(2)} USDT\n💰 Минимальный вывод: ${minWithdrawal} USDT\n\nВыберите способ вывода:`
-  };
-
-  await bot.sendMessage(chatId, selectMethodMessages[lang], depositMethodKeyboard);
-}
-
-export async function handleWithdrawalMethod(bot, query) {
-  const chatId = query.message.chat.id;
-  const user = await User.findByTelegramId(query.from.id);
-  
-  if (!user) {
-    logWarning('WITHDRAWAL', `User ${query.from.id} not found`);
-    return;
-  }
-
-  // منع استخدام عنوان المحفظة (معطل مؤقتاً)
-  if (query.data === 'withdrawal_wallet' || query.data === 'deposit_wallet') {
-    const lang = user.language || 'ar';
-    const messages = {
-      ar: '⚠️ السحب/الإيداع عبر عنوان المحفظة معطل مؤقتاً\n\nيرجى استخدام Binance Pay ID',
-      en: '⚠️ Withdrawal/Deposit via wallet address is temporarily disabled\n\nPlease use Binance Pay ID',
-      ru: '⚠️ Вывод/Пополнение через адрес кошелька временно отключен\n\nПожалуйста, используйте Binance Pay ID'
-    };
-    await bot.answerCallbackQuery(query.id, { text: messages[lang], show_alert: true });
-    return;
-  }
-
-  const method = query.data === 'withdrawal_binance_id' || query.data === 'deposit_binance_id' ? 'binance_id' : 'wallet';
-  const lang = user.language || 'ar';
-  const minWithdrawal = await Settings.getMinWithdrawal();
-  logCallback(query.data, query.from.id, query.from.username);
-
   withdrawalStates.set(chatId, {
     userId: user.id,
-    telegramId: query.from.id,
-    method,
     step: 'awaiting_amount',
     lang
   });
 
   const messages = {
-    ar: method === 'binance_id' 
-      ? `💸 السحب عبر Binance Pay ID\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: ${minWithdrawal}):`
-      : `💸 السحب عبر عنوان المحفظة\n\n💰 أرسل المبلغ بالـ USDT (الحد الأدنى: ${minWithdrawal}):`,
-    en: method === 'binance_id'
-      ? `💸 Withdraw via Binance Pay ID\n\n💰 Send amount in USDT (minimum: ${minWithdrawal}):`
-      : `💸 Withdraw via Wallet Address\n\n💰 Send amount in USDT (minimum: ${minWithdrawal}):`,
-    ru: method === 'binance_id'
-      ? `💸 Вывод через Binance Pay ID\n\n💰 Отправьте сумму в USDT (минимум: ${minWithdrawal}):`
-      : `💸 Вывод через адрес кошелька\n\n💰 Отправьте сумму в USDT (минимум: ${minWithdrawal}):`
+    ar: `💸 سحب الرصيد\n\n👛 رصيدك المتاح: ${balance.toFixed(2)} USDT\n💸 الحد الأدنى: ${minWithdrawal} USDT\n\nأرسل المبلغ الذي تريد سحبه:`,
+    en: `💸 Withdraw Balance\n\n👛 Available balance: ${balance.toFixed(2)} USDT\n💸 Minimum: ${minWithdrawal} USDT\n\nSend the amount you want to withdraw:`,
+    ru: `💸 Вывод баланса\n\n👛 Доступный баланс: ${balance.toFixed(2)} USDT\n💸 Минимум: ${minWithdrawal} USDT\n\nОтправьте сумму, которую хотите вывести:`
   };
 
-  await bot.editMessageText(messages[lang], {
-    chat_id: chatId,
-    message_id: query.message.message_id
-  });
+  await bot.sendMessage(chatId, messages[lang], cancelKeyboard);
+}
+
+export async function handleWithdrawalMethod(bot, query) {
+  const chatId = query.message.chat.id;
+  const state = withdrawalStates.get(chatId);
+  
+  if (!state) return;
+
+  const method = query.data.replace('withdraw_method_', '');
+  state.method = method;
+  state.step = method === 'binance_id' ? 'awaiting_binance_id' : 'awaiting_wallet_address';
+  
+  const lang = state.lang || 'ar';
+  
+  if (method === 'binance_id') {
+    const messages = {
+      ar: '🆔 أرسل Binance Pay ID الخاص بك:',
+      en: '🆔 Send your Binance Pay ID:',
+      ru: '🆔 Отправьте ваш Binance Pay ID:'
+    };
+    await bot.editMessageText(messages[lang], {
+      chat_id: chatId,
+      message_id: query.message.message_id
+    });
+  } else {
+    const messages = {
+      ar: '📍 أرسل عنوان محفظة USDT (BEP20/TRC20):',
+      en: '📍 Send your USDT wallet address (BEP20/TRC20):',
+      ru: '📍 Отправьте ваш адрес кошелька USDT (BEP20/TRC20):'
+    };
+    await bot.editMessageText(messages[lang], {
+      chat_id: chatId,
+      message_id: query.message.message_id
+    });
+  }
+  
+  await bot.answerCallbackQuery(query.id);
 }
 
 export async function handleWithdrawalSteps(bot, msg) {
@@ -102,80 +88,45 @@ export async function handleWithdrawalSteps(bot, msg) {
 
   const lang = state.lang || 'ar';
 
-  if (msg.text === '❌ إلغاء') {
+  if (msg.text === '❌ إلغاء' || msg.text === '❌ Cancel' || msg.text === '❌ Отмена') {
     withdrawalStates.delete(chatId);
-    const isAdmin = await Admin.isAdmin(msg.from.id);
-    const cancelMessages = {
-      ar: '❌ تم إلغاء العملية',
-      en: '❌ Operation cancelled',
-      ru: '❌ Операция отменена'
-    };
-    await bot.sendMessage(chatId, cancelMessages[lang], isAdmin ? adminMenu : mainMenu);
+    await bot.sendMessage(chatId, '❌ تم إلغاء العملية', mainMenu);
     return true;
-  }
-
-  // تجاهل أزرار القائمة الرئيسية عندما يكون في حالة انتظار
-  const menuButtons = [
-    '📋 مهامي', '➕ إضافة مهمة', '💰 محفظتي', '💵 إيداع', '💸 سحب',
-    'ℹ️ معلوماتي', '📞 الدعم', '🌐 تغيير اللغة', '⚙️ لوحة التحكم',
-    '📖 طريقة العمل'
-  ];
-  
-  if (menuButtons.includes(msg.text)) {
-    // إلغاء الحالة الحالية والسماح بمعالجة الزر الجديد
-    withdrawalStates.delete(chatId);
-    return false; // السماح لمعالجات الأزرار الأخرى بالعمل
   }
 
   switch (state.step) {
     case 'awaiting_amount':
       const amount = parseFloat(msg.text);
-      logInfo('WITHDRAWAL', `Amount received: ${amount} USDT from user ${msg.from.id}`);
-      
       const minWithdrawal = await Settings.getMinWithdrawal();
-      
-      if (isNaN(amount) || amount < minWithdrawal) {
+      const balance = await User.getBalance(state.userId);
+
+      if (isNaN(amount) || amount < minWithdrawal || amount > balance) {
         const messages = {
-          ar: `❌ المبلغ غير صحيح. الحد الأدنى: ${minWithdrawal} USDT`,
-          en: `❌ Invalid amount. Minimum: ${minWithdrawal} USDT`,
-          ru: `❌ Неверная сумма. Минимум: ${minWithdrawal} USDT`
+          ar: `❌ مبلغ غير صالح. يجب أن يكون بين ${minWithdrawal} و ${balance.toFixed(2)} USDT`,
+          en: `❌ Invalid amount. Must be between ${minWithdrawal} and ${balance.toFixed(2)} USDT`,
+          ru: `❌ Неверная сумма. Должна быть от ${minWithdrawal} до ${balance.toFixed(2)} USDT`
         };
         await bot.sendMessage(chatId, messages[lang]);
         return true;
       }
 
-      // التحقق من الرصيد
-      const balance = await User.getBalance(state.userId);
-      if (amount > balance) {
-        const messages = {
-          ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${balance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${amount} USDT`,
-          en: `❌ Insufficient balance\n\n👛 Your balance: ${balance.toFixed(2)} USDT\n💸 Requested amount: ${amount} USDT`,
-          ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${balance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${amount} USDT`
-        };
-        await bot.sendMessage(chatId, messages[lang]);
-        return true;
-      }
-      
       state.amount = amount;
-      logSuccess('WITHDRAWAL', `Amount accepted: ${amount} USDT`);
+      state.step = 'awaiting_method';
       
-      if (state.method === 'binance_id') {
-        state.step = 'awaiting_binance_id';
-        const messages = {
-          ar: '🆔 أرسل Binance Pay ID الخاص بك:',
-          en: '🆔 Send your Binance Pay ID:',
-          ru: '🆔 Отправьте ваш Binance Pay ID:'
-        };
-        await bot.sendMessage(chatId, messages[lang], cancelKeyboard);
-      } else {
-        state.step = 'awaiting_wallet_address';
-        const messages = {
-          ar: '📍 أرسل عنوان محفظتك (USDT):',
-          en: '📍 Send your wallet address (USDT):',
-          ru: '📍 Отправьте адрес вашего кошелька (USDT):'
-        };
-        await bot.sendMessage(chatId, messages[lang], cancelKeyboard);
-      }
+      const methodMessages = {
+        ar: '💳 اختر طريقة السحب:',
+        en: '💳 Choose withdrawal method:',
+        ru: '💳 Выберите метод вывода:'
+      };
+      
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: 'Binance Pay ID', callback_data: 'withdraw_method_binance_id' }],
+          [{ text: 'Wallet Address (USDT)', callback_data: 'withdraw_method_wallet' }]
+        ]
+      };
+      
+      await bot.sendMessage(chatId, methodMessages[lang], { reply_markup: keyboard });
       break;
 
     case 'awaiting_binance_id':
@@ -206,35 +157,23 @@ export async function handleWithdrawalSteps(bot, msg) {
       try {
         logInfo('WITHDRAWAL', `Creating request: ${state.amount} USDT via Binance Pay ID`);
         
-        // التحقق من الرصيد قبل الخصم
-        const currentBalance = await User.getBalance(state.userId);
-        if (currentBalance < state.amount) {
-          logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
-          const messages = {
-            ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
-            en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
-            ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
-          };
-          await bot.sendMessage(chatId, messages[lang]);
-          return;
-        }
-        
-        // خصم المبلغ من الرصيد
-        await User.updateBalance(state.userId, -state.amount);
-        
-        // التحقق مرة أخرى بعد الخصم (للأمان)
-        const newBalance = await User.getBalance(state.userId);
-        if (newBalance < 0) {
-          // إعادة المبلغ
-          await User.updateBalance(state.userId, state.amount);
-          logError('WITHDRAWAL', `Balance went negative after withdrawal - reversed`);
-          const errorMessages = {
-            ar: '❌ حدث خطأ، يرجى المحاولة مرة أخرى',
-            en: '❌ Error occurred, please try again',
-            ru: '❌ Произошла ошибка, попробуйте еще раз'
-          };
-          await bot.sendMessage(chatId, errorMessages[lang]);
-          return;
+        // خصم المبلغ من الرصيد بشكل ذري (Atomic)
+        try {
+          await User.updateBalance(state.userId, -state.amount);
+        } catch (error) {
+          if (error.message === 'INSUFFICIENT_BALANCE_OR_USER_NOT_FOUND') {
+            const currentBalance = await User.getBalance(state.userId);
+            logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
+            const messages = {
+              ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
+              en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
+              ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
+            };
+            await bot.sendMessage(chatId, messages[lang]);
+            withdrawalStates.delete(chatId);
+            return true;
+          }
+          throw error;
         }
         
         const withdrawalId = await Withdrawal.create({
@@ -257,19 +196,11 @@ export async function handleWithdrawalSteps(bot, msg) {
         };
         
         await bot.sendMessage(chatId, successMessages[lang], isAdmin ? adminMenu : mainMenu);
-
-        // إشعار المسؤولين
         await notifyAdminsWithdrawal(bot, withdrawalId, state);
-
         withdrawalStates.delete(chatId);
       } catch (error) {
         logError('WITHDRAWAL', 'Failed to create withdrawal (Binance)', error);
-        const errorMessages = {
-          ar: '❌ حدث خطأ أثناء إرسال الطلب',
-          en: '❌ Error occurred while sending request',
-          ru: '❌ Произошла ошибка при отправке запроса'
-        };
-        await bot.sendMessage(chatId, errorMessages[lang]);
+        await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إرسال الطلب');
       }
       break;
 
@@ -290,35 +221,23 @@ export async function handleWithdrawalSteps(bot, msg) {
       try {
         logInfo('WITHDRAWAL', `Creating request: ${state.amount} USDT to ${state.walletAddress}`);
         
-        // التحقق من الرصيد قبل الخصم
-        const currentBalance = await User.getBalance(state.userId);
-        if (currentBalance < state.amount) {
-          logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
-          const messages = {
-            ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
-            en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
-            ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
-          };
-          await bot.sendMessage(chatId, messages[lang]);
-          return;
-        }
-        
-        // خصم المبلغ من الرصيد
-        await User.updateBalance(state.userId, -state.amount);
-        
-        // التحقق مرة أخرى بعد الخصم (للأمان)
-        const newBalance = await User.getBalance(state.userId);
-        if (newBalance < 0) {
-          // إعادة المبلغ
-          await User.updateBalance(state.userId, state.amount);
-          logError('WITHDRAWAL', `Balance went negative after withdrawal - reversed`);
-          const errorMessages = {
-            ar: '❌ حدث خطأ، يرجى المحاولة مرة أخرى',
-            en: '❌ Error occurred, please try again',
-            ru: '❌ Произошла ошибка, попробуйте еще раз'
-          };
-          await bot.sendMessage(chatId, errorMessages[lang]);
-          return;
+        // خصم المبلغ من الرصيد بشكل ذري (Atomic)
+        try {
+          await User.updateBalance(state.userId, -state.amount);
+        } catch (error) {
+          if (error.message === 'INSUFFICIENT_BALANCE_OR_USER_NOT_FOUND') {
+            const currentBalance = await User.getBalance(state.userId);
+            logError('WITHDRAWAL', `Insufficient balance: ${currentBalance} < ${state.amount}`);
+            const messages = {
+              ar: `❌ رصيدك غير كافٍ\n\n👛 رصيدك: ${currentBalance.toFixed(2)} USDT\n💸 المبلغ المطلوب: ${state.amount} USDT`,
+              en: `❌ Insufficient balance\n\n👛 Your balance: ${currentBalance.toFixed(2)} USDT\n💸 Requested amount: ${state.amount} USDT`,
+              ru: `❌ Недостаточно средств\n\n👛 Ваш баланс: ${currentBalance.toFixed(2)} USDT\n💸 Запрошенная сумма: ${state.amount} USDT`
+            };
+            await bot.sendMessage(chatId, messages[lang]);
+            withdrawalStates.delete(chatId);
+            return true;
+          }
+          throw error;
         }
         
         const withdrawalId = await Withdrawal.create({
@@ -341,19 +260,12 @@ export async function handleWithdrawalSteps(bot, msg) {
         };
         
         await bot.sendMessage(chatId, successMessages[lang], isAdmin ? adminMenu : mainMenu);
-
-        // إشعار المسؤولين
         await notifyAdminsWithdrawal(bot, withdrawalId, state);
-
+        withdrawalStates.set(chatId, state); // Keep state for further steps if needed, or delete if done
         withdrawalStates.delete(chatId);
       } catch (error) {
         logError('WITHDRAWAL', 'Failed to create withdrawal (Wallet)', error);
-        const errorMessages = {
-          ar: '❌ حدث خطأ أثناء إرسال الطلب',
-          en: '❌ Error occurred while sending request',
-          ru: '❌ Произошла ошибка при отправке запроса'
-        };
-        await bot.sendMessage(chatId, errorMessages[lang]);
+        await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إرسال الطلب');
       }
       break;
 
@@ -361,49 +273,18 @@ export async function handleWithdrawalSteps(bot, msg) {
       return false;
   }
 
-  withdrawalStates.set(chatId, state);
   return true;
 }
 
 async function notifyAdminsWithdrawal(bot, withdrawalId, state) {
-  logInfo('WITHDRAWAL', `Notifying admins about withdrawal ${withdrawalId}`);
-  
-  let message = '🔔 طلب سحب جديد\n\n';
-  message += `🆔 رقم الطلب: ${withdrawalId}\n`;
-  message += `💰 المبلغ: ${state.amount} USDT\n`;
-  message += `📍 الطريقة: ${state.method === 'binance_id' ? 'Binance Pay ID' : 'عنوان المحفظة'}\n\n`;
-  
-  if (state.method === 'binance_id') {
-    message += `🆔 Binance Pay ID: ${state.binanceId}\n`;
-  } else {
-    message += `📍 العنوان: ${state.walletAddress}\n`;
-    message += `🌐 الشبكة: ${state.network}\n`;
-  }
-
-  const keyboard = {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ تم الإرسال', callback_data: `withdrawal_complete_${withdrawalId}` },
-          { text: '❌ رفض', callback_data: `withdrawal_reject_${withdrawalId}` }
-        ]
-      ]
-    }
-  };
-
   const adminIds = await Admin.getAllAdminIds();
+  const message = `🔔 طلب سحب جديد\n\n🆔 رقم الطلب: ${withdrawalId}\n💰 المبلغ: ${state.amount} USDT\n📍 الطريقة: ${state.method}`;
+  
   for (const adminId of adminIds) {
     try {
-      await bot.sendMessage(adminId, message, keyboard);
-      
-      if (state.screenshotId) {
-        await bot.sendPhoto(adminId, state.screenshotId, {
-          caption: '📸 صورة Binance Pay ID'
-        });
-      }
-      logSuccess('WITHDRAWAL', `Admin ${adminId} notified about withdrawal ${withdrawalId}`);
-    } catch (error) {
-      logError('WITHDRAWAL', `Failed to notify admin ${adminId}`, error);
+      await bot.sendMessage(adminId, message);
+    } catch (e) {
+      logError('WITHDRAWAL_NOTIFY', `Failed to notify admin ${adminId}`);
     }
   }
 }
@@ -411,125 +292,67 @@ async function notifyAdminsWithdrawal(bot, withdrawalId, state) {
 export async function handleWithdrawalReview(bot, query) {
   const data = query.data;
   const reviewerId = query.from.id;
-
-  logCallback(data, reviewerId, query.from.username);
-
-  const isAdmin = await Admin.isAdmin(reviewerId);
-  if (!isAdmin) {
-    logWarning('WITHDRAWAL', `Unauthorized review attempt by ${reviewerId}`);
-    await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح لك' });
-    return;
-  }
-
-  if (data.startsWith('withdrawal_complete_')) {
+  
+  if (data.startsWith('withdraw_accept_')) {
     const withdrawalId = parseInt(data.split('_')[2]);
-    logInfo('WITHDRAWAL', `Processing completion: ${withdrawalId}`);
-    
-    const withdrawal = await Withdrawal.getById(withdrawalId);
-    
-    if (!withdrawal) {
-      logWarning('WITHDRAWAL', `Withdrawal ${withdrawalId} not found`);
-      await bot.answerCallbackQuery(query.id, { text: '❌ الطلب غير موجود' });
-      return;
-    }
-
-    if (withdrawal.status !== 'pending') {
-      logWarning('WITHDRAWAL', `Withdrawal ${withdrawalId} already reviewed (${withdrawal.status})`);
-      await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
-      return;
-    }
-
-    const user = await User.findByTelegramId(reviewerId);
-    await Withdrawal.updateStatus(withdrawalId, 'completed', user.id);
-
-    logSuccess('WITHDRAWAL', `Withdrawal ${withdrawalId} completed`);
-
-    await bot.sendMessage(
-      withdrawal.user_telegram_id,
-      `✅ تم إرسال مبلغ السحب!\n\n` +
-      `🆔 رقم الطلب: ${withdrawalId}\n` +
-      `💰 المبلغ: ${withdrawal.amount} USDT\n\n` +
-      `تم إرسال المبلغ بنجاح`
-    );
-
-    await bot.editMessageText(
-      query.message.text + '\n\n✅ تم الإرسال',
-      { chat_id: query.message.chat.id, message_id: query.message.message_id }
-    );
-
-    await bot.answerCallbackQuery(query.id, { text: '✅ تم تأكيد الإرسال' });
-  } else if (data.startsWith('withdrawal_reject_')) {
-    const withdrawalId = parseInt(data.split('_')[2]);
-    logInfo('WITHDRAWAL', `Initiating rejection flow for: ${withdrawalId}`);
-    
-    withdrawalRejectStates.set(query.message.chat.id, { withdrawalId });
-    
-    await bot.sendMessage(
-      query.message.chat.id,
-      '❌ رفض طلب السحب\n\n📝 أرسل سبب الرفض:',
-      {
-        reply_markup: {
-          keyboard: [['❌ إلغاء']],
-          resize_keyboard: true
-        }
+    try {
+      const withdrawal = await Withdrawal.getById(withdrawalId);
+      if (withdrawal && withdrawal.status === 'pending') {
+        await Withdrawal.updateStatus(withdrawalId, 'completed', reviewerId);
+        await bot.answerCallbackQuery(query.id, { text: '✅ تم قبول السحب' });
+        
+        const user = await User.findById(withdrawal.user_id);
+        const lang = user?.language || 'ar';
+        const messages = {
+          ar: `✅ تم تنفيذ طلب السحب الخاص بك!\n\n💰 المبلغ: ${withdrawal.amount} USDT\n🆔 رقم الطلب: ${withdrawalId}`,
+          en: `✅ Your withdrawal request has been completed!\n\n💰 Amount: ${withdrawal.amount} USDT\n🆔 Request ID: ${withdrawalId}`,
+          ru: `✅ Ваш запрос на вывод выполнен!\n\n💰 Сумма: ${withdrawal.amount} USDT\n🆔 ID запроса: ${withdrawalId}`
+        };
+        await bot.sendMessage(user.telegram_id, messages[lang]);
       }
-    );
-
+    } catch (e) {
+      logError('WITHDRAWAL_REVIEW', 'Error accepting withdrawal', e);
+    }
+  } else if (data.startsWith('withdraw_reject_')) {
+    const withdrawalId = parseInt(data.split('_')[2]);
+    withdrawalRejectStates.set(reviewerId, { withdrawalId });
+    await bot.sendMessage(reviewerId, '❌ أرسل سبب الرفض:', cancelKeyboard);
     await bot.answerCallbackQuery(query.id);
   }
 }
 
-const withdrawalRejectStates = new Map();
-
 export async function handleWithdrawalRejectReason(bot, msg) {
-  const chatId = msg.chat.id;
-  const state = withdrawalRejectStates.get(chatId);
-  
+  const reviewerId = msg.from.id;
+  const state = withdrawalRejectStates.get(reviewerId);
   if (!state) return false;
 
   if (msg.text === '❌ إلغاء') {
-    logInfo('WITHDRAWAL', `Rejection cancelled by admin ${msg.from.id}`);
-    withdrawalRejectStates.delete(chatId);
-    await bot.sendMessage(chatId, '❌ تم إلغاء العملية', adminMenu);
+    withdrawalRejectStates.delete(reviewerId);
+    await bot.sendMessage(reviewerId, '❌ تم إلغاء العملية', adminMenu);
     return true;
   }
 
   const reason = msg.text;
-  logInfo('WITHDRAWAL', `Rejection reason for ${state.withdrawalId}: ${reason}`);
-  
-  const withdrawal = await Withdrawal.getById(state.withdrawalId);
-  
-  if (!withdrawal) {
-    logWarning('WITHDRAWAL', `Withdrawal ${state.withdrawalId} not found`);
-    await bot.sendMessage(chatId, '❌ الطلب غير موجود');
-    withdrawalRejectStates.delete(chatId);
-    return true;
+  try {
+    const withdrawal = await Withdrawal.getById(state.withdrawalId);
+    if (withdrawal && withdrawal.status === 'pending') {
+      await Withdrawal.updateStatus(state.withdrawalId, 'rejected', reviewerId, reason);
+      // إرجاع المبلغ للمستخدم
+      await User.updateBalance(withdrawal.user_id, withdrawal.amount);
+      
+      const user = await User.findById(withdrawal.user_id);
+      const lang = user?.language || 'ar';
+      const messages = {
+        ar: `❌ تم رفض طلب السحب الخاص بك\n\n💰 المبلغ: ${withdrawal.amount} USDT\n📝 السبب: ${reason}\n\nتم إرجاع المبلغ لرصيدك`,
+        en: `❌ Your withdrawal request was rejected\n\n💰 Amount: ${withdrawal.amount} USDT\n📝 Reason: ${reason}\n\nAmount has been refunded to your balance`,
+        ru: `❌ Ваш запрос на вывод отклонен\n\n💰 Сумма: ${withdrawal.amount} USDT\n📝 Причина: ${reason}\n\nСумма возвращена на ваш баланس`
+      };
+      await bot.sendMessage(user.telegram_id, messages[lang]);
+      await bot.sendMessage(reviewerId, '✅ تم رفض الطلب وإرجاع المبلغ للمستخدم', adminMenu);
+    }
+    withdrawalRejectStates.delete(reviewerId);
+  } catch (e) {
+    logError('WITHDRAWAL_REJECT', 'Error rejecting withdrawal', e);
   }
-
-  const user = await User.findByTelegramId(msg.from.id);
-  await Withdrawal.updateStatus(state.withdrawalId, 'rejected', user.id, reason);
-
-  // إعادة المبلغ للمستخدم
-  await User.updateBalance(withdrawal.user_id, withdrawal.amount);
-
-  logSuccess('WITHDRAWAL', `Withdrawal ${state.withdrawalId} rejected by admin ${msg.from.id}`);
-
-  const supportText = await Settings.getSupportText('ar');
-  
-  await bot.sendMessage(
-    withdrawal.user_telegram_id,
-    `❌ تم رفض طلب السحب\n\n` +
-    `🆔 رقم الطلب: ${state.withdrawalId}\n` +
-    `💰 المبلغ: ${withdrawal.amount} USDT\n\n` +
-    `📝 السبب: ${reason}\n\n` +
-    `💰 تم إعادة المبلغ إلى محفظتك\n\n` +
-    `إذا كنت تعتقد أن هناك مشكلة، يرجى التواصل مع الدعم:\n${supportText}`
-  );
-
-  await bot.sendMessage(chatId, '✅ تم رفض الطلب وإرسال الإشعار للمستخدم', adminMenu);
-  
-  withdrawalRejectStates.delete(chatId);
   return true;
 }
-
-export { withdrawalStates, withdrawalRejectStates };

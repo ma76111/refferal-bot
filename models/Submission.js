@@ -83,6 +83,12 @@ export default class Submission {
 
   static updateStatus(submissionId, status, reviewerId) {
     return new Promise((resolve, reject) => {
+      const validStatuses = ['pending', 'accept', 'reject'];
+      if (!validStatuses.includes(status)) {
+        logger.error(`Invalid submission status: ${status}`);
+        reject(new Error(`Invalid submission status: ${status}`));
+        return;
+      }
       logger.database(`Updating submission ${submissionId} status to: ${status}`);
       
       db.run(
@@ -314,6 +320,64 @@ export default class Submission {
     });
   }
 
+  // تحديث إثبات موجود للتحسين (بدلاً من إنشاء سجل جديد)
+  static updateForImprovement(taskId, userId, proofText, proofImages) {
+    return new Promise((resolve, reject) => {
+      logger.database(`Updating submission for improvement: task=${taskId}, user=${userId}`);
+      
+      db.run(
+        `UPDATE task_submissions
+         SET proof_text = ?, proof_images = ?, status = 'pending',
+             reviewed_by = NULL, reviewed_at = NULL,
+             reject_type = NULL, reject_message = NULL,
+             can_retry = 0, improvement_deadline = NULL,
+             created_at = CURRENT_TIMESTAMP
+         WHERE task_id = ? AND user_id = ?`,
+        [proofText, proofImages, taskId, userId],
+        function(err) {
+          if (err) {
+            logger.error(`Failed to update submission for improvement: ${err.message}`);
+            reject(err);
+          } else if (this.changes === 0) {
+            reject(new Error('Submission not found for improvement'));
+          } else {
+            logger.success(`Submission updated for improvement: task=${taskId}, user=${userId}`);
+            // إرجاع ID السجل
+            db.get(
+              'SELECT id FROM task_submissions WHERE task_id = ? AND user_id = ?',
+              [taskId, userId],
+              (err2, row) => {
+                if (err2) reject(err2);
+                else resolve(row?.id);
+              }
+            );
+          }
+        }
+      );
+    });
+  }
+
+  // الحصول على عدد التقديمات المقبولة لمهمة معينة
+  static getAcceptedCount(taskId) {
+    return new Promise((resolve, reject) => {
+      logger.database(`Getting accepted count for task ${taskId}`);
+      
+      db.get(
+        `SELECT COUNT(*) as count FROM task_submissions 
+         WHERE task_id = ? AND status = 'accept'`,
+        [taskId],
+        (err, row) => {
+          if (err) {
+            logger.error(`Failed to get accepted count: ${err.message}`);
+            reject(err);
+          } else {
+            resolve(row?.count || 0);
+          }
+        }
+      );
+    });
+  }
+
   // حذف الصور من التقديم (لتوفير المساحة والخصوصية)
   static clearProofImages(submissionId) {
     return new Promise((resolve, reject) => {
@@ -365,11 +429,18 @@ export default class Submission {
     return new Promise((resolve, reject) => {
       logger.database(`Setting improvement deadline for submission ${submissionId}: ${timeoutSeconds} seconds`);
       
+      // استخدام parameter binding لتجنب SQL injection
+      const seconds = parseInt(timeoutSeconds);
+      if (isNaN(seconds) || seconds <= 0) {
+        reject(new Error(`Invalid timeoutSeconds: ${timeoutSeconds}`));
+        return;
+      }
+      
       db.run(
         `UPDATE task_submissions 
-         SET improvement_deadline = datetime('now', '+${timeoutSeconds} seconds')
+         SET improvement_deadline = datetime('now', ? || ' seconds')
          WHERE id = ?`,
-        [submissionId],
+        [`+${seconds}`, submissionId],
         (err) => {
           if (err) {
             logger.error(`Failed to set improvement deadline: ${err.message}`);

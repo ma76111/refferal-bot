@@ -11,7 +11,15 @@ export default class Settings {
           logError('SETTINGS', `Failed to get setting ${key}`, err);
           reject(err);
         } else {
-          const value = row ? JSON.parse(row.value) : null;
+          let value = null;
+          if (row) {
+            try {
+              value = JSON.parse(row.value);
+            } catch (parseErr) {
+              logError('SETTINGS', `Malformed JSON for key "${key}": ${row.value}`, parseErr);
+              value = null;
+            }
+          }
           logInfo('SETTINGS', `Setting ${key}: ${value !== null ? 'found' : 'not found'}`);
           resolve(value);
         }
@@ -102,14 +110,38 @@ export default class Settings {
 
   static async getMinReward() {
     const value = await this.get('min_reward');
-    const result = value || 0.01; // 0.01 USDT افتراضياً
-    logInfo('SETTINGS', `Minimum reward: ${result} USDT`);
+    const result = value || 0.01; // 0.01 USDT افتراضياً (روابط تيليجرام)
+    logInfo('SETTINGS', `Minimum reward (Telegram): ${result} USDT`);
     return result;
   }
 
   static async setMinReward(amount) {
     logInfo('SETTINGS', `Setting minimum reward to: ${amount} USDT`);
     return await this.set('min_reward', amount);
+  }
+
+  static async getMinExternalReward() {
+    const value = await this.get('min_external_reward');
+    const result = value || 0.05; // 0.05 USDT افتراضياً (روابط خارجية)
+    logInfo('SETTINGS', `Minimum reward (External): ${result} USDT`);
+    return result;
+  }
+
+  static async setMinExternalReward(amount) {
+    logInfo('SETTINGS', `Setting minimum external reward to: ${amount} USDT`);
+    return await this.set('min_external_reward', amount);
+  }
+
+  static async getExchangePointsCost() {
+    const value = await this.get('exchange_points_cost');
+    const result = value || 3; // 3 نقاط افتراضياً لمهام التبادل
+    logInfo('SETTINGS', `Exchange points cost: ${result}`);
+    return result;
+  }
+
+  static async setExchangePointsCost(points) {
+    logInfo('SETTINGS', `Setting exchange points cost to: ${points}`);
+    return await this.set('exchange_points_cost', points);
   }
 
   static async getMinWithdrawal() {

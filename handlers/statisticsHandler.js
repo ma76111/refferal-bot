@@ -123,7 +123,7 @@ export async function handleStatistics(bot, msg) {
     // إحصائيات الأدمنز
     if (stats.admins && stats.admins.total_admins > 0) {
       message += '👨‍💼 **الأدمنز:**\n';
-      message += `├ إجمالي الأدمنز: ${stats.admins.total_admins + 1}\n`; // +1 للأدمن الرئيسي
+      message += `├ إجمالي الأدمنز: ${stats.admins.total_admins + 1}\n`; // +1 للأدمن الرئيسي (غير مسجل في جدول admins)
       message += `├ نشطون: ${stats.admins.active_admins}\n`;
       message += `└ غير نشطين: ${stats.admins.inactive_admins}\n\n`;
     }

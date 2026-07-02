@@ -77,6 +77,12 @@ export default class Appeal {
   // تحديث حالة الاستئناف
   static updateStatus(appealId, status, reviewerId = null, reviewNote = null) {
     return new Promise((resolve, reject) => {
+      const validStatuses = ['pending', 'approved', 'rejected'];
+      if (!validStatuses.includes(status)) {
+        logError('APPEAL', `Invalid appeal status: ${status}`);
+        reject(new Error(`Invalid appeal status: ${status}`));
+        return;
+      }
       logInfo('APPEAL', `Updating appeal ${appealId} status to ${status}`);
       
       db.run(

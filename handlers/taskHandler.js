@@ -193,31 +193,21 @@ export async function handleTaskCreationSteps(bot, msg) {
       if (!msg.text.startsWith('http')) {
         logger.warning(`Invalid link format: ${msg.text}`);
         const messages = {
-          ar: '❌ الرجاء إرسال رابط صحيح',
-          en: '❌ Please send a valid link',
-          ru: '❌ Пожалуйста, отправьте действительную ссылку'
+          ar: '❌ الرجاء إرسال رابط صحيح يبدأ بـ http',
+          en: '❌ Please send a valid link starting with http',
+          ru: '❌ Пожалуйста, отправьте действительную ссылку, начинающуюся с http'
         };
         await bot.sendMessage(chatId, messages[lang]);
         return true;
       }
-      // التحقق من أن الرابط لتيليجرام فقط
-      if (!msg.text.includes('t.me/') && !msg.text.includes('telegram.me/')) {
-        logger.warning(`Non-Telegram link rejected: ${msg.text}`);
-        const messages = {
-          ar: '❌ يجب أن يكون الرابط لتيليجرام فقط\n\nمثال: https://t.me/botname?start=myref',
-          en: '❌ Link must be for Telegram only\n\nExample: https://t.me/botname?start=myref',
-          ru: '❌ Ссылка должна быть только для Telegram\n\nПример: https://t.me/botname?start=myref'
-        };
-        await bot.sendMessage(chatId, messages[lang]);
-        return true;
-      }
-      // استخراج اسم البوت من الرابط والتحقق منه
-      const urlMatch = msg.text.match(/(?:t\.me|telegram\.me)\/([^?\/]+)/);
-      if (urlMatch && urlMatch[1]) {
-        const botUsername = urlMatch[1];
-        // التحقق من أن اسم البوت ليس رقماً بالكامل
-        if (/^\d+$/.test(botUsername)) {
-          logger.warning(`Bot username is numbers only: ${botUsername}`);
+
+      const isTelegramLink = msg.text.includes('t.me/') || msg.text.includes('telegram.me/');
+
+      // إذا كان رابط تيليجرام، نتحقق من اسم البوت
+      if (isTelegramLink) {
+        const urlMatch = msg.text.match(/(?:t\.me|telegram\.me)\/([^?\/]+)/);
+        if (urlMatch && urlMatch[1] && /^\d+$/.test(urlMatch[1])) {
+          logger.warning(`Bot username is numbers only: ${urlMatch[1]}`);
           const messages = {
             ar: '❌ اسم البوت في الرابط لا يمكن أن يكون رقماً فقط\n\nمثال صحيح: https://t.me/my_bot?start=ref\n❌ خطأ: https://t.me/123456?start=ref',
             en: '❌ Bot username in link cannot be only numbers\n\nCorrect: https://t.me/my_bot?start=ref\n❌ Wrong: https://t.me/123456?start=ref',
@@ -227,17 +217,16 @@ export async function handleTaskCreationSteps(bot, msg) {
           return true;
         }
       }
-      // ملاحظة: معامل start يمكن أن يكون أي شيء (نص، أرقام، أو مزيج)
-      // العديد من البوتات تستخدم معرفات المستخدمين (أرقام) كمعامل إحالة
-      // لذلك لا نقوم بفحص محتوى معامل start
+
       state.referralLink = msg.text;
+      state.isExternalLink = !isTelegramLink;
       state.step = 'awaiting_required_count';
       const maxCount = await Settings.getMaxRequiredCount();
-      logger.success(`Referral link accepted: ${msg.text}`);
+      logger.success(`Referral link accepted: ${msg.text} (external: ${state.isExternalLink})`);
       const countMessages = {
-        ar: `🔢 كم عدد الأشخاص المطلوبين؟\n\n⚠️ الحد الأقصى حالياً: ${maxCount} أشخاص\n💡 سيزداد الحد مع زيادة عدد مستخدمي البوت`,
-        en: `🔢 How many people are required?\n\n⚠️ Current maximum: ${maxCount} people\n💡 The limit will increase as the bot grows`,
-        ru: `🔢 Сколько человек требуется?\n\n⚠️ Текущий максимум: ${maxCount} человек\n💡 Лимит увеличится по мере роста бота`
+        ar: `🔢 كم عدد الأشخاص المطلوبين؟\n\n⚠️ الحد الأقصى حالياً: ${maxCount} أشخاص`,
+        en: `🔢 How many people are required?\n\n⚠️ Current maximum: ${maxCount} people`,
+        ru: `🔢 Сколько человек требуется?\n\n⚠️ Текущий максимум: ${maxCount} человек`
       };
       await bot.sendMessage(chatId, countMessages[lang], cancelKeyboard);
       break;
@@ -279,19 +268,22 @@ export async function handleTaskCreationSteps(bot, msg) {
         }
         
         const exchangePoints = await User.getExchangePoints(user.id);
+        const pointsCost = await Settings.getExchangePointsCost();
+        const requiredPoints = count * pointsCost;
         
-        if (exchangePoints < count) {
-          logger.warning(`User ${state.userId} has insufficient exchange points: ${exchangePoints} < ${count}`);
+        if (exchangePoints < requiredPoints) {
+          logger.warning(`User ${state.userId} has insufficient exchange points: ${exchangePoints} < ${requiredPoints}`);
           const messages = {
-            ar: `❌ نقاط التبادل لديك غير كافية لإنشاء هذه المهمة\n\n🔄 نقاطك الحالية: ${exchangePoints}\n📊 النقاط المطلوبة: ${count}\n💡 المطلوب: ${count - exchangePoints} نقطة إضافية\n\n✅ لزيادة نقاطك:\n• نفذ مهام الآخرين لتحصل على نقاط (+1 لكل مهمة)\n• كل مهمة تنفذها = +1 نقطة تبادل`,
-            en: `❌ Your exchange points are insufficient to create this task\n\n🔄 Your current points: ${exchangePoints}\n📊 Required points: ${count}\n💡 Needed: ${count - exchangePoints} more points\n\n✅ To increase your points:\n• Complete others' tasks to get points (+1 per task)\n• Each task you complete = +1 exchange point`,
-            ru: `❌ Ваших баллов обмена недостаточно для создания этой задачи\n\n🔄 Ваши текущие баллы: ${exchangePoints}\n📊 Требуемые баллы: ${count}\n💡 Необходимо: ${count - exchangePoints} дополнительных баллов\n\n✅ Чтобы увеличить баллы:\n• Выполняйте задачи других, чтобы получить баллы (+1 за задачу)\n• Каждая выполненная задача = +1 балл обмена`
+            ar: `❌ نقاط التبادل لديك غير كافية لإنشاء هذه المهمة\n\n🔄 نقاطك الحالية: ${exchangePoints}\n📊 النقاط المطلوبة: ${requiredPoints} (${pointsCost} نقطة × ${count} شخص)\n💡 المطلوب: ${requiredPoints - exchangePoints} نقطة إضافية\n\n✅ لزيادة نقاطك:\n• نفذ مهام الآخرين لتحصل على نقاط`,
+            en: `❌ Your exchange points are insufficient to create this task\n\n🔄 Your current points: ${exchangePoints}\n📊 Required points: ${requiredPoints} (${pointsCost} points × ${count} people)\n💡 Needed: ${requiredPoints - exchangePoints} more points\n\n✅ To increase your points:\n• Complete others' tasks to get points`,
+            ru: `❌ Ваших баллов обмена недостаточно для создания этой задачи\n\n🔄 Ваши текущие баллы: ${exchangePoints}\n📊 Требуемые баллы: ${requiredPoints} (${pointsCost} баллов × ${count} человек)\n💡 Необходимо: ${requiredPoints - exchangePoints} дополнительных баллов\n\n✅ Чтобы увеличить баллы:\n• Выполняйте задачи других`
           };
           await bot.sendMessage(chatId, messages[lang]);
           return true;
         }
         
-        logger.success(`User ${state.userId} has sufficient exchange points: ${exchangePoints} >= ${count}`);
+        state.requiredPoints = requiredPoints;
+        logger.success(`User ${state.userId} has sufficient exchange points: ${exchangePoints} >= ${requiredPoints}`);
       }
       
       state.requiredCount = count;
@@ -329,12 +321,15 @@ export async function handleTaskCreationSteps(bot, msg) {
       }
       
       // التحقق من الحد الأدنى للمكافأة
-      const minReward = await Settings.getMinReward();
+      const minReward = state.isExternalLink
+        ? await Settings.getMinExternalReward()
+        : await Settings.getMinReward();
+      const rewardType = state.isExternalLink ? 'خارجي' : 'تيليجرام';
       if (reward < minReward) {
         const messages = {
-          ar: `❌ الحد الأدنى للمكافأة هو ${minReward} USDT\n\n💡 يمكن للأدمن تغيير هذا الحد من لوحة التحكم`,
-          en: `❌ Minimum reward is ${minReward} USDT\n\n💡 Admin can change this limit from control panel`,
-          ru: `❌ Минимальная награда ${minReward} USDT\n\n💡 Администратор может изменить этот лимит из панели управления`
+          ar: `❌ الحد الأدنى للمكافأة للروابط الـ${rewardType === 'خارجي' ? 'خارجية' : 'تيليجرام'} هو ${minReward} USDT`,
+          en: `❌ Minimum reward for ${rewardType === 'خارجي' ? 'external' : 'Telegram'} links is ${minReward} USDT`,
+          ru: `❌ Минимальная награда для ${rewardType === 'خارجي' ? 'внешних' : 'Telegram'} ссылок: ${minReward} USDT`
         };
         await bot.sendMessage(chatId, messages[lang]);
         return true;
@@ -917,7 +912,7 @@ export async function handleTaskConfirmation(bot, query) {
     try {
       logger.info(`Creating task: ${state.botName} (${state.taskType})`);
       
-      // إذا كانت مهمة مدفوعة، خصم المبلغ من رصيد المستخدم
+      // التحقق من الرصيد/النقاط وخصمها قبل إنشاء المهمة
       if (state.taskType === 'paid') {
         const totalCost = state.totalCost || (state.rewardPerUser * state.requiredCount);
         
@@ -942,6 +937,29 @@ export async function handleTaskConfirmation(bot, query) {
         // خصم المبلغ من رصيد المستخدم
         await User.updateBalance(state.userId, -totalCost);
         logger.success(`Deducted ${totalCost} USDT from user ${state.userId} balance`);
+      } else if (state.taskType === 'exchange') {
+        // التحقق مرة أخرى من نقاط التبادل قبل الخصم (للأمان)
+        const exchangePoints = await User.getExchangePoints(state.userId);
+        const requiredPoints = state.requiredPoints || state.requiredCount;
+        if (exchangePoints < requiredPoints) {
+          logger.error(`User ${state.userId} has insufficient exchange points at confirmation`);
+          const messages = {
+            ar: `❌ نقاط التبادل لديك غير كافية (${exchangePoints}/${requiredPoints})`,
+            en: `❌ Your exchange points are insufficient (${exchangePoints}/${requiredPoints})`,
+            ru: `❌ Ваших баллов обмена недостаточно (${exchangePoints}/${requiredPoints})`
+          };
+          await bot.editMessageText(messages[state.lang || 'ar'], {
+            chat_id: chatId,
+            message_id: query.message.message_id
+          });
+          await bot.answerCallbackQuery(query.id, { text: '❌' });
+          userStates.delete(chatId);
+          return;
+        }
+        
+        // خصم نقاط التبادل من المستخدم
+        await User.updateExchangePoints(state.userId, -requiredPoints);
+        logger.success(`Deducted ${requiredPoints} exchange points from user ${state.userId}`);
       }
       
       const taskId = await Task.create({
@@ -1049,10 +1067,25 @@ export async function handleTaskConfirmation(bot, query) {
       const user = await User.findByTelegramId(query.from.id);
       const lang = user?.language || 'ar';
       
+      // إرجاع الرصيد أو النقاط المخصومة في حالة فشل إنشاء المهمة
+      try {
+        if (state.taskType === 'paid') {
+          const totalCost = state.totalCost || (state.rewardPerUser * state.requiredCount);
+          await User.updateBalance(state.userId, totalCost);
+          logger.success(`Refunded ${totalCost} USDT to user ${state.userId} after task creation failure`);
+        } else if (state.taskType === 'exchange') {
+          const refundPoints = state.requiredPoints || state.requiredCount;
+          await User.updateExchangePoints(state.userId, refundPoints);
+          logger.success(`Refunded ${refundPoints} exchange points to user ${state.userId} after task creation failure`);
+        }
+      } catch (refundError) {
+        logger.error('TASK_CONFIRMATION', 'Failed to refund after task creation error', refundError);
+      }
+      
       const errorMessages = {
-        ar: '❌ حدث خطأ أثناء إنشاء المهمة',
-        en: '❌ Error occurred while creating task',
-        ru: '❌ Произошла ошибка при создании задачи'
+        ar: '❌ حدث خطأ أثناء إنشاء المهمة، تم إرجاع رصيدك',
+        en: '❌ Error occurred while creating task, your balance has been refunded',
+        ru: '❌ Произошла ошибка при создании задачи, ваш баланс возвращен'
       };
       await bot.editMessageText(errorMessages[lang], {
         chat_id: chatId,

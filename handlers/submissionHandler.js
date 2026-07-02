@@ -4,7 +4,6 @@ import Submission from '../models/Submission.js';
 import Settings from '../models/Settings.js';
 import Report from '../models/Report.js';
 import ViolationSystem from '../utils/violationSystem.js';
-import { VIOLATION_TYPES } from '../models/Violation.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 import { cancelKeyboard, mainMenu, reviewKeyboard, getRejectKeyboard, getReportKeyboard } from '../utils/keyboards.js';
@@ -82,7 +81,8 @@ export async function handleStartSubmission(bot, msg, taskId, isImprovement = fa
     proofImages: [],
     startTime: Date.now(),
     timeoutSeconds,
-    lang
+    lang,
+    isImprovement
   });
 
   const texts = {
@@ -125,6 +125,9 @@ export async function handleStartSubmission(bot, msg, taskId, isImprovement = fa
   }
 
   await bot.sendMessage(chatId, message, cancelKeyboard);
+
+  // حفظ وقت البداية للمقارنة داخل الـ timer
+  const startTime = submissionStates.get(chatId).startTime;
 
   // إنشاء مؤقت للتحقق من انتهاء الوقت
   const timer = setTimeout(async () => {
@@ -442,18 +445,30 @@ async function finalizeSubmission(bot, chatId, state) {
   }
 
   try {
-    const submissionId = await Submission.create({
-      taskId: state.taskId,
-      userId: state.userId,
-      proofText: state.proofText,
-      proofImages: JSON.stringify(state.proofImages)
-    });
+    let submissionId;
 
-    logger.success(`Submission ${submissionId} created for task ${state.taskId}`);
+    if (state.isImprovement) {
+      // تحديث الإثبات الموجود بدلاً من إنشاء سجل جديد
+      submissionId = await Submission.updateForImprovement(
+        state.taskId,
+        state.userId,
+        state.proofText,
+        JSON.stringify(state.proofImages)
+      );
+      logger.success(`Submission updated for improvement: task=${state.taskId}, user=${state.userId}`);
+    } else {
+      submissionId = await Submission.create({
+        taskId: state.taskId,
+        userId: state.userId,
+        proofText: state.proofText,
+        proofImages: JSON.stringify(state.proofImages)
+      });
+      logger.success(`Submission ${submissionId} created for task ${state.taskId}`);
 
-    // زيادة عداد التقديمات المعلقة
-    await Task.incrementPendingCount(state.taskId);
-    logger.success(`Task ${state.taskId} pending count incremented`);
+      // زيادة عداد التقديمات المعلقة (للتقديمات الجديدة فقط)
+      await Task.incrementPendingCount(state.taskId);
+      logger.success(`Task ${state.taskId} pending count incremented`);
+    }
 
     const successMessages = {
       ar: '✅ تم إرسال الإثبات بنجاح!\n\n⏳ المهمة قيد المراجعة\n🆔 رقم التقديم: ',
@@ -582,7 +597,19 @@ export async function handleReview(bot, query) {
         return;
       }
 
-      await Submission.updateStatus(submissionId, 'accept', reviewer.id);
+      // التحقق من أن المهمة لم تتجاوز العدد المطلوب قبل القبول
+      if (task && task.completed_count >= task.required_count) {
+        logger.warning(`Task ${submission.task_id} already at required_count, cannot accept more`);
+        const overMessages = {
+          ar: '⚠️ المهمة وصلت للعدد المطلوب، لا يمكن قبول مزيد من الإثباتات',
+          en: '⚠️ Task reached required count, cannot accept more submissions',
+          ru: '⚠️ Задача достигла необходимого количества, невозможно принять больше заявок'
+        };
+        await bot.answerCallbackQuery(query.id, { text: overMessages['ar'], show_alert: true });
+        return;
+      }
+
+      await Submission.updateStatus(submissionId, 'accept', reviewer?.id || null);
 
       // إضافة المكافأة
       if (submission.task_type === 'paid') {
@@ -590,12 +617,9 @@ export async function handleReview(bot, query) {
         logger.success(`Reward ${submission.reward_per_user} added to user ${submission.user_id}`);
       } else if (submission.task_type === 'exchange') {
         // إضافة نقطة تبادل للمستخدم الذي نفذ المهمة
+        // (ملاحظة: نقاط صاحب المهمة تم خصمها مسبقاً عند إنشاء المهمة)
         await User.updateExchangePoints(submission.user_id, 1);
         logger.success(`Exchange point +1 added to user ${submission.user_id}`);
-        
-        // خصم نقطة تبادل من صاحب المهمة
-        await User.updateExchangePoints(task.owner_id, -1);
-        logger.success(`Exchange point -1 deducted from task owner ${task.owner_id}`);
       }
 
       logger.success(`Task ${submission.task_id} count remains unchanged (already counted on submission)`);
@@ -811,6 +835,12 @@ export async function handleReview(bot, query) {
     );
     return;
   }
+
+  // معالجة زر الرجوع في قائمة الرفض
+  if (data.startsWith('back_to_review_')) {
+    await bot.answerCallbackQuery(query.id, { text: '🔙' });
+    return;
+  }
 }
 
 function getProofTypeText(proofType, lang = 'ar') {
@@ -885,7 +915,7 @@ export async function handleRejectMessage(bot, msg) {
     const submitterLang = submitter?.language || 'ar';
     
     // تحديث حالة التقديم
-    await Submission.updateStatus(submissionId, 'reject', user.id);
+    await Submission.updateStatus(submissionId, 'reject', user?.id || null);
     await Submission.updateRejection(submissionId, type, rejectMessage, type === 'retry');
 
     // نقصان العداد عند الرفض
@@ -1075,24 +1105,14 @@ export async function handleReport(bot, query) {
     const reportedUser = await User.findById(reportedUserId);
     
     if (reportCount >= 5) {
-      // إضافة مخالفة للمستخدم المبلغ عنه (5 إبلاغات = 5 نقاط)
-      logger.warning(`User ${reportedUserId} received 5 reports - adding violations`);
+      // إضافة مخالفة واحدة فقط للمستخدم المبلغ عنه (5 إبلاغات = مخالفة واحدة)
+      logger.warning(`User ${reportedUserId} received 5 reports - adding single violation`);
       
-      // إضافة 5 نقاط (نقطة لكل إبلاغ)
       const result = await ViolationSystem.addViolation(
         reportedUserId,
         'REPORT_RECEIVED',
         `تلقي 5 إبلاغات من 5 مستخدمين مختلفين`
       );
-      
-      // إضافة 4 نقاط إضافية (ليصبح المجموع 5)
-      for (let i = 0; i < 4; i++) {
-        await ViolationSystem.addViolation(
-          reportedUserId,
-          'REPORT_RECEIVED',
-          `إبلاغ إضافي (${i + 2}/5)`
-        );
-      }
       
       await Report.clearReports(reportedUserId);
       

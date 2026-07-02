@@ -165,8 +165,12 @@ export async function handleSkipComment(bot, query) {
     
     logSuccess('RATING', `Rating ${rating}/5 created successfully`);
   } catch (error) {
-    logError('RATING', 'Failed to create rating', error);
-    await bot.answerCallbackQuery(query.id, { text: '❌ حدث خطأ' });
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      await bot.answerCallbackQuery(query.id, { text: '⚠️ لقد قيمت هذا المستخدم مسبقاً', show_alert: true });
+    } else {
+      logError('RATING', 'Failed to create rating', error);
+      await bot.answerCallbackQuery(query.id, { text: '❌ حدث خطأ' });
+    }
   }
 }
 
@@ -208,8 +212,12 @@ export async function handleRatingComment(bot, msg) {
     logSuccess('RATING', `Rating ${state.rating}/5 with comment created successfully`);
     return true;
   } catch (error) {
-    logError('RATING', 'Failed to create rating with comment', error);
-    await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إرسال التقييم');
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      await bot.sendMessage(chatId, '⚠️ لقد قيمت هذا المستخدم مسبقاً');
+    } else {
+      logError('RATING', 'Failed to create rating with comment', error);
+      await bot.sendMessage(chatId, '❌ حدث خطأ أثناء إرسال التقييم');
+    }
     return true;
   }
 }

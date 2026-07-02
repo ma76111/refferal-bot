@@ -1,8 +1,9 @@
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
 import Settings from '../models/Settings.js';
+import Submission from '../models/Submission.js';
 import config from '../config.js';
-import { adminMenu, getMainMenuKeyboard, languageKeyboard, adminPanelKeyboard, mainAdminPanelKeyboard } from '../utils/keyboards.js';
+import { adminMenu, getMainMenuKeyboard, languageKeyboard, adminPanelKeyboard, mainAdminPanelKeyboard, adminSettingsKeyboard, adminToolsKeyboard } from '../utils/keyboards.js';
 import { logInfo, logSuccess, logWarning, logError } from '../utils/logger.js';
 
 const adminStates = new Map();
@@ -86,10 +87,13 @@ export async function handleAdminSteps(bot, msg) {
   // تجاهل أزرار لوحة التحكم عندما يكون في حالة انتظار
   const adminButtons = [
     '✅ مراجعة المهام', '💵 مراجعة الإيداعات', '💸 مراجعة السحوبات',
+    '📋 الاستئنافات', '⚙️ الإعدادات', '🛠️ الأدوات',
+    '📊 الإحصائيات', '📢 رسالة جماعية', '👥 إدارة الأدمنز', '🔙 رجوع',
+    // أزرار قديمة للتوافق
     '🔍 البحث عن مستخدم', '✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص',
     '📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة', '🔄 تغيير مهلة التحسين',
-    '💰 تغيير الحد الأدنى للمكافأة', '💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات',
-    '📢 رسالة جماعية', '📋 الاستئنافات', '👥 إدارة الأدمنز', '🗑️ حذف مهمة', '🔙 رجوع'
+    '💰 تغيير الحد الأدنى للمكافأة', '🌐 حد أدنى مكافأة خارجية', '🔄 تكلفة نقاط التبادل',
+    '💸 تغيير الحد الأدنى للسحب', '🗑️ حذف مهمة'
   ];
   
   if (adminButtons.includes(msg.text)) {
@@ -254,7 +258,37 @@ export async function handleAdminSteps(bot, msg) {
       await Settings.setMinReward(minReward);
       await bot.sendMessage(
         chatId,
-        `✅ تم تحديث الحد الأدنى للمكافأة إلى: ${minReward} USDT`,
+        `✅ تم تحديث الحد الأدنى للمكافأة (تيليجرام) إلى: ${minReward} USDT`,
+        getAdminKeyboard(msg.from.id)
+      );
+      adminStates.delete(chatId);
+      break;
+
+    case 'awaiting_min_external_reward':
+      const minExternalReward = parseFloat(msg.text);
+      if (isNaN(minExternalReward) || minExternalReward < 0) {
+        await bot.sendMessage(chatId, '❌ الرجاء إرسال مبلغ صحيح (يجب أن يكون 0 أو أكثر)');
+        return true;
+      }
+      await Settings.setMinExternalReward(minExternalReward);
+      await bot.sendMessage(
+        chatId,
+        `✅ تم تحديث الحد الأدنى للمكافأة (روابط خارجية) إلى: ${minExternalReward} USDT`,
+        getAdminKeyboard(msg.from.id)
+      );
+      adminStates.delete(chatId);
+      break;
+
+    case 'awaiting_exchange_points_cost':
+      const exchangePointsCost = parseInt(msg.text);
+      if (isNaN(exchangePointsCost) || exchangePointsCost <= 0) {
+        await bot.sendMessage(chatId, '❌ الرجاء إرسال رقم صحيح أكبر من 0');
+        return true;
+      }
+      await Settings.setExchangePointsCost(exchangePointsCost);
+      await bot.sendMessage(
+        chatId,
+        `✅ تم تحديث تكلفة نقاط التبادل إلى: ${exchangePointsCost} نقطة لكل شخص مطلوب`,
         getAdminKeyboard(msg.from.id)
       );
       adminStates.delete(chatId);
@@ -379,6 +413,25 @@ export async function handleAdminSteps(bot, msg) {
           await bot.sendMessage(chatId, '❌ المهمة غير موجودة', getAdminKeyboard(msg.from.id));
           adminStates.delete(chatId);
           return true;
+        }
+        
+        // إرجاع الرصيد أو نقاط التبادل المتبقية قبل الحذف
+        if (task.status === 'active') {
+          if (task.task_type === 'paid') {
+            const acceptedCount = await Submission.getAcceptedCount(taskId);
+            const remainingAmount = (task.required_count - acceptedCount) * task.reward_per_user;
+            if (remainingAmount > 0) {
+              await User.updateBalance(task.owner_id, remainingAmount);
+              logSuccess('ADMIN', `Refunded ${remainingAmount} USDT to user ${task.owner_id}`);
+            }
+          } else if (task.task_type === 'exchange') {
+            const acceptedCount = await Submission.getAcceptedCount(taskId);
+            const remainingPoints = task.required_count - acceptedCount;
+            if (remainingPoints > 0) {
+              await User.updateExchangePoints(task.owner_id, remainingPoints);
+              logSuccess('ADMIN', `Refunded ${remainingPoints} exchange points to user ${task.owner_id}`);
+            }
+          }
         }
         
         // حذف المهمة

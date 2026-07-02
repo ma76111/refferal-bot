@@ -2,3 +2,6 @@ node_modules/
 .env
 *.db
 *.log
+web/client/dist/
+web/client/.env
+web/server/.env

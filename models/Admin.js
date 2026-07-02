@@ -1,6 +1,7 @@
 import db from '../database.js';
+import config from '../config.js';
 
-const MAIN_ADMIN_ID = 8339087985; // الأدمن الرئيسي
+const MAIN_ADMIN_ID = config.MAIN_ADMIN_ID;
 
 class Admin {
   // التحقق من أن المستخدم أدمن رئيسي

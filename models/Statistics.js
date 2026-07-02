@@ -10,8 +10,8 @@ export default class Statistics {
       db.get(`
         SELECT 
           COUNT(*) as total_users,
-          COUNT(CASE WHEN is_banned = 1 THEN 1 END) as banned_users,
-          COUNT(CASE WHEN is_banned = 0 THEN 1 END) as active_users,
+          COUNT(CASE WHEN ban_status != 'none' THEN 1 END) as banned_users,
+          COUNT(CASE WHEN ban_status = 'none' THEN 1 END) as active_users,
           SUM(balance) as total_balance
         FROM users
       `, (err, row) => {

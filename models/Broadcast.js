@@ -6,6 +6,14 @@ export default class Broadcast {
   static create(adminId, message, targetType = 'all', targetIds = null) {
     return new Promise((resolve, reject) => {
       logInfo('BROADCAST', `Creating broadcast message by admin ${adminId}`);
+
+      // التحقق من نوع الجمهور المستهدف
+      const validTargetTypes = ['all', 'active', 'banned'];
+      if (!validTargetTypes.includes(targetType)) {
+        logError('BROADCAST', `Invalid target type: ${targetType}`);
+        reject(new Error(`Invalid target type: ${targetType}`));
+        return;
+      }
       
       db.run(
         `INSERT INTO broadcasts (admin_id, message, target_type, target_ids, status)
@@ -39,7 +47,12 @@ export default class Broadcast {
             reject(err);
           } else {
             if (row && row.target_ids) {
-              row.target_ids = JSON.parse(row.target_ids);
+              try {
+                row.target_ids = JSON.parse(row.target_ids);
+              } catch (e) {
+                logError('BROADCAST', `Malformed target_ids JSON for broadcast ${broadcastId}`, e);
+                row.target_ids = null;
+              }
             }
             resolve(row);
           }
@@ -107,7 +120,12 @@ export default class Broadcast {
           } else {
             rows.forEach(row => {
               if (row.target_ids) {
-                row.target_ids = JSON.parse(row.target_ids);
+                try {
+                  row.target_ids = JSON.parse(row.target_ids);
+                } catch (e) {
+                  logError('BROADCAST', `Malformed target_ids JSON for broadcast ${row.id}`, e);
+                  row.target_ids = null;
+                }
               }
             });
             logSuccess('BROADCAST', `Found ${rows.length} broadcasts`);
@@ -132,7 +150,12 @@ export default class Broadcast {
           } else {
             rows.forEach(row => {
               if (row.target_ids) {
-                row.target_ids = JSON.parse(row.target_ids);
+                try {
+                  row.target_ids = JSON.parse(row.target_ids);
+                } catch (e) {
+                  logError('BROADCAST', `Malformed target_ids JSON for broadcast ${row.id}`, e);
+                  row.target_ids = null;
+                }
               }
             });
             logSuccess('BROADCAST', `Found ${rows.length} pending broadcasts`);

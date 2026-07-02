@@ -13,7 +13,7 @@ const rl = readline.createInterface({
 
 console.log('╔════════════════════════════════════════════════════════════╗');
 console.log('║         🔄 سكريبت إعادة تعيين البوت بالكامل            ║');
-console.log('║                    الإصدار 2.1                          ║');
+console.log('║                    الإصدار 2.2                          ║');
 console.log('╚════════════════════════════════════════════════════════════╝\n');
 
 console.log('⚠️  تحذير: هذا السكريبت سيحذف:\n');
@@ -32,9 +32,6 @@ console.log('✅ سيتم الاحتفاظ بـ:\n');
 console.log('   ✓ الكود المصدري');
 console.log('   ✓ ملف .env (الإعدادات)');
 console.log('   ✓ ملف README.md');
-console.log('   ✓ ملف VIOLATION_SYSTEM.md');
-console.log('   ✓ ملف NEW_FEATURES.md');
-console.log('   ✓ ملف INTEGRATION_GUIDE.md');
 console.log('   ✓ ملف .gitignore\n');
 
 rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ (اكتب "نعم" للتأكيد): ', (answer) => {
@@ -72,11 +69,7 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
 
   // 3. حذف ملفات التوثيق الإضافية (ما عدا الملفات المهمة)
   const keepMdFiles = [
-    'README.md',
-    'GITHUB_SETUP.md',
-    'VIOLATION_SYSTEM.md',
-    'NEW_FEATURES.md',
-    'INTEGRATION_GUIDE.md'
+    'README.md'
   ];
   
   const mdFiles = fs.readdirSync(__dirname).filter(file => 
@@ -108,7 +101,9 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
     'test_admin.txt',
     'test_bot.js',
     'test_syntax.js',
-    'PUSH_TO_GITHUB.txt'
+    'PUSH_TO_GITHUB.txt',
+    'add_exchange_points.js',
+    'backup_database.js'
   ];
   testFiles.forEach(file => {
     const filePath = path.join(__dirname, file);
@@ -157,14 +152,16 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
   console.log('   ✓ hidden_tasks - المهام المخفية\n');
 
   console.log('💡 ملاحظة: يمكنك الآن البدء من جديد بدون أي بيانات قديمة\n');
-  console.log('🎉 الإصدار 2.0 يتضمن:\n');
+  console.log('🎉 الإصدار 2.2 يتضمن:\n');
   console.log('   • نظام الإحصائيات 📊');
   console.log('   • نظام التقييمات ⭐');
   console.log('   • نظام الرسائل الجماعية 📢');
   console.log('   • نظام الاستئناف 📝');
   console.log('   • نظام المخالفات والحظر المتقدم 🚫');
   console.log('   • فحص الرصيد قبل إنشاء المهام المدفوعة 💰');
-  console.log('   • قبول روابط الإحالة بمعاملات رقمية ✅\n');
+  console.log('   • خصم نقاط التبادل عند إنشاء المهام ✅');
+  console.log('   • إصلاح timeout الإثباتات ⏱️');
+  console.log('   • إصلاح نظام الإبلاغات والمخالفات 🔧\n');
 
   rl.close();
 });

@@ -13,6 +13,11 @@ db.serialize(() => {
     balance REAL DEFAULT 0,
     exchange_points INTEGER DEFAULT 0,
     is_banned INTEGER DEFAULT 0,
+    violation_points INTEGER DEFAULT 0,
+    last_violation_date DATETIME DEFAULT NULL,
+    ban_status TEXT DEFAULT 'none',
+    ban_expires_at DATETIME DEFAULT NULL,
+    restrictions TEXT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -44,6 +49,10 @@ db.serialize(() => {
     reviewed_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     reviewed_at DATETIME,
+    reject_type TEXT DEFAULT NULL,
+    reject_message TEXT DEFAULT NULL,
+    can_retry INTEGER DEFAULT 0,
+    improvement_deadline DATETIME DEFAULT NULL,
     FOREIGN KEY (task_id) REFERENCES tasks(id),
     FOREIGN KEY (user_id) REFERENCES users(id),
     UNIQUE(task_id, user_id)
@@ -129,7 +138,8 @@ db.serialize(() => {
     FOREIGN KEY (reporter_id) REFERENCES users(id),
     FOREIGN KEY (reported_user_id) REFERENCES users(id),
     FOREIGN KEY (task_id) REFERENCES tasks(id),
-    FOREIGN KEY (submission_id) REFERENCES task_submissions(id)
+    FOREIGN KEY (submission_id) REFERENCES task_submissions(id),
+    UNIQUE(reporter_id, reported_user_id, submission_id)
   )`);
 
   // إضافة حقول جديدة لجدول التقديمات (تجاهل الخطأ إذا كانت موجودة)

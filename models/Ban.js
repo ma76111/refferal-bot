@@ -8,25 +8,50 @@ export default class Ban {
       const { userId, type, duration, reason, bannedBy } = banData;
       
       logger.database(`Creating ban: user=${userId}, type=${type}, duration=${duration}`);
-      
-      const endDate = type === 'temporary' && duration 
-        ? `datetime('now', '+${duration} days')` 
-        : null;
-      
-      db.run(
-        `INSERT INTO bans (user_id, type, duration, reason, banned_by, end_date)
-         VALUES (?, ?, ?, ?, ?, ${endDate ? endDate : 'NULL'})`,
-        [userId, type, duration, reason, bannedBy],
-        function(err) {
-          if (err) {
-            logger.error(`Failed to create ban: ${err.message}`);
-            reject(err);
-          } else {
-            logger.success(`Ban created with ID: ${this.lastID}`);
-            resolve(this.lastID);
-          }
+
+      // التحقق من نوع الحظر
+      if (type !== 'temporary' && type !== 'permanent') {
+        reject(new Error(`Invalid ban type: ${type}`));
+        return;
+      }
+
+      // التحقق من المدة للحظر المؤقت
+      if (type === 'temporary' && duration) {
+        const days = parseInt(duration);
+        if (isNaN(days) || days <= 0) {
+          reject(new Error(`Invalid ban duration: ${duration}`));
+          return;
         }
-      );
+        db.run(
+          `INSERT INTO bans (user_id, type, duration, reason, banned_by, end_date)
+           VALUES (?, ?, ?, ?, ?, datetime('now', ? || ' days'))`,
+          [userId, type, duration, reason, bannedBy, `+${days}`],
+          function(err) {
+            if (err) {
+              logger.error(`Failed to create ban: ${err.message}`);
+              reject(err);
+            } else {
+              logger.success(`Ban created with ID: ${this.lastID}`);
+              resolve(this.lastID);
+            }
+          }
+        );
+      } else {
+        db.run(
+          `INSERT INTO bans (user_id, type, duration, reason, banned_by, end_date)
+           VALUES (?, ?, ?, ?, ?, NULL)`,
+          [userId, type, duration, reason, bannedBy],
+          function(err) {
+            if (err) {
+              logger.error(`Failed to create ban: ${err.message}`);
+              reject(err);
+            } else {
+              logger.success(`Ban created with ID: ${this.lastID}`);
+              resolve(this.lastID);
+            }
+          }
+        );
+      }
     });
   }
 
@@ -59,20 +84,37 @@ export default class Ban {
     return new Promise((resolve, reject) => {
       logger.database('Lifting expired temporary bans');
       
-      db.run(
-        `UPDATE bans 
-         SET status = 'expired' 
+      // أولاً: جلب المستخدمين المتأثرين
+      db.all(
+        `SELECT DISTINCT user_id FROM bans 
          WHERE status = 'active' 
          AND type = 'temporary'
          AND datetime(end_date) <= datetime('now')`,
-        function(err) {
+        (err, rows) => {
           if (err) {
-            logger.error(`Failed to lift expired bans: ${err.message}`);
+            logger.error(`Failed to get expired bans: ${err.message}`);
             reject(err);
-          } else {
-            logger.success(`Lifted ${this.changes} expired bans`);
-            resolve(this.changes);
+            return;
           }
+          
+          const affectedUserIds = rows.map(r => r.user_id);
+          
+          db.run(
+            `UPDATE bans 
+             SET status = 'expired' 
+             WHERE status = 'active' 
+             AND type = 'temporary'
+             AND datetime(end_date) <= datetime('now')`,
+            function(err2) {
+              if (err2) {
+                logger.error(`Failed to lift expired bans: ${err2.message}`);
+                reject(err2);
+              } else {
+                logger.success(`Lifted ${this.changes} expired bans`);
+                resolve({ count: this.changes, userIds: affectedUserIds });
+              }
+            }
+          );
         }
       );
     });

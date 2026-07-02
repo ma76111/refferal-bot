@@ -4,6 +4,7 @@ dotenv.config();
 export default {
   BOT_TOKEN: process.env.BOT_TOKEN,
   ADMIN_IDS: process.env.ADMIN_IDS?.split(',').map(id => parseInt(id)) || [],
+  MAIN_ADMIN_ID: parseInt(process.env.MAIN_ADMIN_ID) || 8339087985,
   MAX_IMAGES: 3,
   DATABASE_PATH: './bot.db',
   MAX_REQUIRED_COUNT: 10, // الحد الأقصى الافتراضي

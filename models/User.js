@@ -42,11 +42,9 @@ export default class User {
 
   static searchByIdOrUsername(query) {
     return new Promise((resolve, reject) => {
-      // إزالة @ من اليوزرنيم إذا كان موجوداً
       const cleanQuery = query.toString().replace('@', '');
       const numericQuery = parseInt(cleanQuery);
       
-      // إذا كان الإدخال رقمياً، ابحث بـ telegram_id فقط
       if (!isNaN(numericQuery) && numericQuery > 0) {
         db.all(
           'SELECT * FROM users WHERE telegram_id = ?',
@@ -57,7 +55,6 @@ export default class User {
           }
         );
       } else {
-        // إذا كان نصياً، ابحث بـ username فقط
         db.all(
           'SELECT * FROM users WHERE username LIKE ?',
           [`%${cleanQuery}%`],
@@ -70,31 +67,27 @@ export default class User {
     });
   }
 
+  /**
+   * تحديث الرصيد بشكل آمن
+   * يمنع الرصيد من أن يصبح سالباً إذا كان المبلغ المخصوم أكبر من المتاح
+   */
   static updateBalance(userId, amount) {
     return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          
-          db.run(
-            'UPDATE users SET balance = balance + ? WHERE id = ?',
-            [amount, userId],
-            (err) => {
-              if (err) {
-                db.run('ROLLBACK');
-                reject(err);
-              } else {
-                db.run('COMMIT', (err) => {
-                  if (err) reject(err);
-                  else resolve();
-                });
-              }
-            }
-          );
-        });
+      // إذا كان الخصم سيجعل الرصيد سالباً، نرفض العملية
+      const query = amount < 0 
+        ? 'UPDATE users SET balance = balance + ? WHERE id = ? AND balance >= ?' 
+        : 'UPDATE users SET balance = balance + ? WHERE id = ?';
+      
+      const params = amount < 0 ? [amount, userId, Math.abs(amount)] : [amount, userId];
+
+      db.run(query, params, function(err) {
+        if (err) {
+          reject(err);
+        } else if (this.changes === 0) {
+          reject(new Error('INSUFFICIENT_BALANCE_OR_USER_NOT_FOUND'));
+        } else {
+          resolve();
+        }
       });
     });
   }
@@ -125,7 +118,6 @@ export default class User {
     });
   }
 
-  // نقاط الإحالات المتبادلة
   static getExchangePoints(userId) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -139,16 +131,26 @@ export default class User {
     });
   }
 
+  /**
+   * تحديث نقاط التبادل بشكل آمن
+   */
   static updateExchangePoints(userId, points) {
     return new Promise((resolve, reject) => {
-      db.run(
-        'UPDATE users SET exchange_points = exchange_points + ? WHERE id = ?',
-        [points, userId],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
+      const query = points < 0
+        ? 'UPDATE users SET exchange_points = exchange_points + ? WHERE id = ? AND exchange_points >= ?'
+        : 'UPDATE users SET exchange_points = exchange_points + ? WHERE id = ?';
+      
+      const params = points < 0 ? [points, userId, Math.abs(points)] : [points, userId];
+
+      db.run(query, params, function(err) {
+        if (err) {
+          reject(err);
+        } else if (this.changes === 0) {
+          reject(new Error('INSUFFICIENT_POINTS_OR_USER_NOT_FOUND'));
+        } else {
+          resolve();
         }
-      );
+      });
     });
   }
 
@@ -217,9 +219,6 @@ export default class User {
     });
   }
 
-  // ===== نظام المخالفات الجديد =====
-
-  // إضافة نقاط مخالفة
   static addViolationPoints(userId, points) {
     return new Promise((resolve, reject) => {
       db.run(
@@ -236,7 +235,6 @@ export default class User {
     });
   }
 
-  // الحصول على نقاط المخالفات
   static getViolationPoints(userId) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -250,7 +248,6 @@ export default class User {
     });
   }
 
-  // تحديث حالة الحظر
   static updateBanStatus(userId, status, expiresAt = null) {
     return new Promise((resolve, reject) => {
       db.run(
@@ -268,7 +265,6 @@ export default class User {
     });
   }
 
-  // الحصول على حالة الحظر
   static getBanStatus(userId) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -282,7 +278,6 @@ export default class User {
     });
   }
 
-  // إضافة تقييد
   static addRestriction(userId, restriction) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -320,7 +315,6 @@ export default class User {
     });
   }
 
-  // إزالة تقييد
   static removeRestriction(userId, restriction) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -356,7 +350,6 @@ export default class User {
     });
   }
 
-  // الحصول على التقييدات
   static getRestrictions(userId) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -383,7 +376,6 @@ export default class User {
     });
   }
 
-  // التحقق من وجود تقييد معين
   static hasRestriction(userId, restriction) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -395,7 +387,6 @@ export default class User {
     });
   }
 
-  // تقليل نقاط المخالفات (إعادة التأهيل)
   static reduceViolationPoints(userId, points) {
     return new Promise((resolve, reject) => {
       db.run(
@@ -414,7 +405,6 @@ export default class User {
     });
   }
 
-  // الحصول على جميع المستخدمين
   static getAll() {
     return new Promise((resolve, reject) => {
       db.all(
@@ -427,11 +417,10 @@ export default class User {
     });
   }
 
-  // الحصول على المستخدمين النشطين
   static getActive() {
     return new Promise((resolve, reject) => {
       db.all(
-        'SELECT * FROM users WHERE is_banned = 0 ORDER BY created_at DESC',
+        "SELECT * FROM users WHERE ban_status = 'none' ORDER BY created_at DESC",
         (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);
@@ -440,11 +429,10 @@ export default class User {
     });
   }
 
-  // الحصول على المستخدمين المحظورين
   static getBanned() {
     return new Promise((resolve, reject) => {
       db.all(
-        'SELECT * FROM users WHERE is_banned = 1 ORDER BY created_at DESC',
+        "SELECT * FROM users WHERE ban_status != 'none' ORDER BY created_at DESC",
         (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);
@@ -453,4 +441,3 @@ export default class User {
     });
   }
 }
-

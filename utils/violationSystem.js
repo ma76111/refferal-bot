@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-import Violation, { VIOLATION_TYPES, PENALTY_LEVELS } from '../models/Violation.js';
+import Violation, { VIOLATION_TYPES } from '../models/Violation.js';
 import Ban from '../models/Ban.js';
 import Restriction, { RESTRICTION_TYPES } from '../models/Restriction.js';
 import Settings from '../models/Settings.js';
@@ -46,9 +46,9 @@ export default class ViolationSystem {
       logger.info(`User ${userId} now has ${totalPoints} violation points`);
       
       // تطبيق العقوبة المناسبة
-      await this.applyPenalty(userId, totalPoints, reason, adminId);
+      const penalty = await this.applyPenalty(userId, totalPoints, reason, adminId);
       
-      return { success: true, points, totalPoints };
+      return { success: true, points, totalPoints, penalty };
     } catch (error) {
       logger.error(`Failed to add violation: ${error.message}`);
       throw error;

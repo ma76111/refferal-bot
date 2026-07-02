@@ -16,8 +16,8 @@ import Statistics from './models/Statistics.js';
 import Rating from './models/Rating.js';
 import Broadcast from './models/Broadcast.js';
 import Appeal from './models/Appeal.js';
-import { mainMenu, adminMenu, adminPanelKeyboard, mainAdminPanelKeyboard, userLanguageKeyboard, getMainMenuKeyboard, depositReviewKeyboard } from './utils/keyboards.js';
-import { logInfo, logSuccess, logError, logUser, logCommand, logCallback, logSeparator } from './utils/logger.js';
+import { mainMenu, adminMenu, adminPanelKeyboard, mainAdminPanelKeyboard, adminSettingsKeyboard, adminToolsKeyboard, userLanguageKeyboard, getMainMenuKeyboard, depositReviewKeyboard } from './utils/keyboards.js';
+import { logInfo, logSuccess, logError, logWarning, logUser, logCommand, logCallback, logSeparator } from './utils/logger.js';
 import {
   handleAddTask,
   handleTaskType,
@@ -154,13 +154,18 @@ setInterval(async () => {
 // مهمة دورية لرفع الحظر المؤقت المنتهي (كل 10 دقائق)
 setInterval(async () => {
   try {
-    const liftedCount = await Ban.liftExpiredBans();
-    if (liftedCount > 0) {
-      logInfo('CLEANUP', `Lifted ${liftedCount} expired temporary bans`);
+    const result = await Ban.liftExpiredBans();
+    if (result.count > 0) {
+      logInfo('CLEANUP', `Lifted ${result.count} expired temporary bans`);
       
-      // تحديث حالة المستخدمين
-      for (let i = 0; i < liftedCount; i++) {
-        // سيتم تحديث الحالة تلقائياً عند التحقق من المستخدم
+      // تحديث ban_status في جدول المستخدمين
+      for (const userId of result.userIds) {
+        try {
+          await User.updateBanStatus(userId, 'none', null);
+          logInfo('CLEANUP', `Updated ban_status to none for user ${userId}`);
+        } catch (err) {
+          logError('CLEANUP', `Failed to update ban_status for user ${userId}`, err);
+        }
       }
     }
   } catch (error) {
@@ -1237,6 +1242,44 @@ bot.onText(/⚙️ لوحة التحكم|⚙️ Admin Panel|⚙️ Панель 
   );
 });
 
+// معالج زر الإعدادات
+bot.onText(/⚙️ الإعدادات/, async (msg) => {
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  const [maxCount, maxTasks, taskTimeout, improvTimeout, minReward, minExtReward, exchCost, minWithdrawal] = await Promise.all([
+    Settings.getMaxRequiredCount(),
+    Settings.getMaxTasksPerUser(),
+    Settings.getTaskTimeout(),
+    Settings.getImprovementTimeout(),
+    Settings.getMinReward(),
+    Settings.getMinExternalReward(),
+    Settings.getExchangePointsCost(),
+    Settings.getMinWithdrawal()
+  ]);
+
+  const text =
+    `⚙️ الإعدادات الحالية\n\n` +
+    `🔧 الحد الأقصى للأشخاص: ${maxCount}\n` +
+    `📝 حد المهام للمستخدم: ${maxTasks}\n` +
+    `⏱️ مهلة المهمة: ${taskTimeout / 60} دقيقة\n` +
+    `🔄 مهلة التحسين: ${improvTimeout / 60} دقيقة\n` +
+    `💰 حد أدنى مكافأة (تيليجرام): ${minReward} USDT\n` +
+    `🌐 حد أدنى مكافأة (خارجي): ${minExtReward} USDT\n` +
+    `🔄 تكلفة نقاط التبادل: ${exchCost} نقطة/شخص\n` +
+    `💸 الحد الأدنى للسحب: ${minWithdrawal} USDT\n\n` +
+    `اختر الإعداد للتعديل:`;
+
+  await bot.sendMessage(msg.chat.id, text, adminSettingsKeyboard);
+});
+
+// معالج زر الأدوات
+bot.onText(/🛠️ الأدوات/, async (msg) => {
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+  await bot.sendMessage(msg.chat.id, '🛠️ الأدوات\n\nاختر الأداة المطلوبة:', adminToolsKeyboard);
+});
+
 // معالج إدارة الأدمنز (للأدمن الرئيسي فقط)
 bot.onText(/👥 إدارة الأدمنز/, async (msg) => {
   logCommand('👥 Manage Admins', msg.from.id, msg.from.username);
@@ -1489,9 +1532,65 @@ bot.onText(/💰 تغيير الحد الأدنى للمكافأة/, async (msg)
   
   await bot.sendMessage(
     msg.chat.id,
-    `💰 تغيير الحد الأدنى للمكافأة\n\n` +
+    `💰 تغيير الحد الأدنى للمكافأة (روابط تيليجرام)\n\n` +
     `💵 الحد الأدنى الحالي: ${currentMinReward} USDT\n\n` +
     `📝 أرسل الحد الأدنى الجديد (بالـ USDT):`,
+    {
+      reply_markup: {
+        keyboard: [['❌ إلغاء']],
+        resize_keyboard: true
+      }
+    }
+  );
+});
+
+// معالج تغيير الحد الأدنى للمكافأة للروابط الخارجية (للأدمن فقط)
+bot.onText(/🌐 حد أدنى مكافأة خارجية/, async (msg) => {
+  logCommand('🌐 Change Min External Reward', msg.from.id, msg.from.username);
+  
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
+    await bot.sendMessage(msg.chat.id, '❌ غير مصرح لك بهذا الأمر');
+    return;
+  }
+
+  const currentMinExternalReward = await Settings.getMinExternalReward();
+  
+  adminStatesFromHandler.set(msg.chat.id, { step: 'awaiting_min_external_reward' });
+  
+  await bot.sendMessage(
+    msg.chat.id,
+    `🌐 تغيير الحد الأدنى للمكافأة (روابط خارجية)\n\n` +
+    `💵 الحد الأدنى الحالي: ${currentMinExternalReward} USDT\n\n` +
+    `📝 أرسل الحد الأدنى الجديد (بالـ USDT):`,
+    {
+      reply_markup: {
+        keyboard: [['❌ إلغاء']],
+        resize_keyboard: true
+      }
+    }
+  );
+});
+
+// معالج تغيير تكلفة نقاط التبادل (للأدمن فقط)
+bot.onText(/🔄 تكلفة نقاط التبادل/, async (msg) => {
+  logCommand('🔄 Change Exchange Points Cost', msg.from.id, msg.from.username);
+  
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) {
+    await bot.sendMessage(msg.chat.id, '❌ غير مصرح لك بهذا الأمر');
+    return;
+  }
+
+  const currentCost = await Settings.getExchangePointsCost();
+  
+  adminStatesFromHandler.set(msg.chat.id, { step: 'awaiting_exchange_points_cost' });
+  
+  await bot.sendMessage(
+    msg.chat.id,
+    `🔄 تغيير تكلفة نقاط التبادل\n\n` +
+    `🔢 التكلفة الحالية: ${currentCost} نقطة لكل شخص مطلوب\n\n` +
+    `📝 أرسل التكلفة الجديدة (عدد النقاط لكل شخص):`,
     {
       reply_markup: {
         keyboard: [['❌ إلغاء']],
@@ -1657,6 +1756,59 @@ bot.on('callback_query', async (query) => {
     return;
   }
 
+  // معالجات الإعدادات الفرعية
+  if (data === 'admin_settings_close' || data === 'admin_tools_close') {
+    await bot.answerCallbackQuery(query.id);
+    await bot.deleteMessage(query.message.chat.id, query.message.message_id).catch(() => {});
+    return;
+  }
+
+  if (data.startsWith('admin_setting_')) {
+    const isAdmin = await Admin.isAdmin(query.from.id);
+    if (!isAdmin) { await bot.answerCallbackQuery(query.id, { text: '❌ غير مصرح' }); return; }
+
+    await bot.answerCallbackQuery(query.id);
+    const chatId = query.message.chat.id;
+    const cancelKb = { reply_markup: { keyboard: [['❌ إلغاء']], resize_keyboard: true } };
+
+    const settingMap = {
+      'admin_setting_max_count':             { step: 'awaiting_max_count',              label: '🔧 الحد الأقصى للأشخاص المطلوبين', getValue: () => Settings.getMaxRequiredCount(), unit: '' },
+      'admin_setting_max_tasks':             { step: 'awaiting_max_tasks',              label: '📝 حد المهام للمستخدم', getValue: () => Settings.getMaxTasksPerUser(), unit: '' },
+      'admin_setting_task_timeout':          { step: 'awaiting_task_timeout',           label: '⏱️ وقت مهلة المهمة (بالدقائق)', getValue: async () => (await Settings.getTaskTimeout()) / 60, unit: 'دقيقة' },
+      'admin_setting_improvement_timeout':   { step: 'awaiting_improvement_timeout',    label: '🔄 مهلة التحسين (بالدقائق)', getValue: async () => (await Settings.getImprovementTimeout()) / 60, unit: 'دقيقة' },
+      'admin_setting_min_reward':            { step: 'awaiting_min_reward',             label: '💰 حد أدنى مكافأة (تيليجرام)', getValue: () => Settings.getMinReward(), unit: 'USDT' },
+      'admin_setting_min_external_reward':   { step: 'awaiting_min_external_reward',    label: '🌐 حد أدنى مكافأة (روابط خارجية)', getValue: () => Settings.getMinExternalReward(), unit: 'USDT' },
+      'admin_setting_exchange_cost':         { step: 'awaiting_exchange_points_cost',   label: '🔄 تكلفة نقاط التبادل', getValue: () => Settings.getExchangePointsCost(), unit: 'نقطة/شخص' },
+      'admin_setting_min_withdrawal':        { step: 'awaiting_min_withdrawal',         label: '💸 الحد الأدنى للسحب', getValue: () => Settings.getMinWithdrawal(), unit: 'USDT' }
+    };
+
+    const setting = settingMap[data];
+    if (!setting) return;
+
+    const currentValue = await setting.getValue();
+    adminStatesFromHandler.set(chatId, { step: setting.step });
+    await bot.sendMessage(chatId, `${setting.label}\n\nالقيمة الحالية: ${currentValue} ${setting.unit}\n\nأرسل القيمة الجديدة:`, cancelKb);
+    return;
+  }
+
+  if (data === 'admin_tool_search') {
+    await bot.answerCallbackQuery(query.id);
+    await handleSearchUser(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_support_text') {
+    await bot.answerCallbackQuery(query.id);
+    await handleEditSupportText(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_delete_task') {
+    await bot.answerCallbackQuery(query.id);
+    await handleDeleteTask(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
   // معالجات إدارة الأدمنز
   if (data === 'admin_add_admin') {
     await bot.answerCallbackQuery(query.id);
@@ -1811,6 +1963,7 @@ bot.on('callback_query', async (query) => {
       }
       
       await User.banUser(user.id);
+      await User.updateBanStatus(user.id, 'permanent', null);
       await bot.answerCallbackQuery(query.id, { text: '✅ تم حظر المستخدم' });
       
       // تحديث الرسالة
@@ -1855,6 +2008,7 @@ bot.on('callback_query', async (query) => {
       }
       
       await User.unbanUser(user.id);
+      await User.updateBanStatus(user.id, 'none', null);
       await bot.answerCallbackQuery(query.id, { text: '✅ تم إلغاء حظر المستخدم' });
       
       // تحديث الرسالة
@@ -2489,8 +2643,31 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // الحصول على تفاصيل المهمة قبل الحذف لإرجاع الرصيد
+    const taskToDelete = await Task.getById(taskId);
+    
     // حذف المهمة
     await Task.delete(taskId);
+
+    // إرجاع الرصيد أو نقاط التبادل المتبقية
+    if (taskToDelete && taskToDelete.status === 'active') {
+      if (taskToDelete.task_type === 'paid') {
+        const acceptedCount = await Submission.getAcceptedCount(taskId);
+        const remainingAmount = (taskToDelete.required_count - acceptedCount) * taskToDelete.reward_per_user;
+        if (remainingAmount > 0) {
+          await User.updateBalance(user.id, remainingAmount);
+          logInfo('TASK', `Refunded ${remainingAmount} USDT to user ${user.id} for deleted task ${taskId}`);
+        }
+      } else if (taskToDelete.task_type === 'exchange') {
+        const acceptedCount = await Submission.getAcceptedCount(taskId);
+        const remainingPoints = taskToDelete.required_count - acceptedCount;
+        if (remainingPoints > 0) {
+          await User.updateExchangePoints(user.id, remainingPoints);
+          logInfo('TASK', `Refunded ${remainingPoints} exchange points to user ${user.id} for deleted task ${taskId}`);
+        }
+      }
+    }
+
     await bot.answerCallbackQuery(query.id, { text: '✅ تم حذف المهمة بنجاح' });
 
     // حذف الرسالة
@@ -2627,16 +2804,19 @@ async function checkAndDeleteExpiredTasks() {
       // إرجاع الأموال/النقاط لأصحاب المهام المحذوفة
       for (const task of result.tasks) {
         try {
+          // جلب عدد التقديمات المقبولة فعلياً
+          const acceptedCount = await Submission.getAcceptedCount(task.id);
+
           if (task.task_type === 'paid') {
             // إرجاع المبلغ المتبقي للمهام المدفوعة
-            const remainingAmount = (task.required_count - task.completed_count) * task.reward_per_user;
+            const remainingAmount = (task.required_count - acceptedCount) * task.reward_per_user;
             if (remainingAmount > 0) {
               await User.updateBalance(task.owner_id, remainingAmount);
               logSuccess('TASK_CLEANUP', `Refunded ${remainingAmount} USDT to user ${task.owner_id} for expired task ${task.id}`);
             }
           } else {
             // إرجاع نقاط التبادل المتبقية
-            const remainingPoints = task.required_count - task.completed_count;
+            const remainingPoints = task.required_count - acceptedCount;
             if (remainingPoints > 0) {
               await User.updateExchangePoints(task.owner_id, remainingPoints);
               logSuccess('TASK_CLEANUP', `Refunded ${remainingPoints} exchange points to user ${task.owner_id} for expired task ${task.id}`);
@@ -2655,7 +2835,7 @@ async function checkAndDeleteExpiredTasks() {
           let message = messages[lang];
           
           if (task.task_type === 'paid') {
-            const remainingAmount = (task.required_count - task.completed_count) * task.reward_per_user;
+            const remainingAmount = (task.required_count - acceptedCount) * task.reward_per_user;
             const refundMessages = {
               ar: `💰 تم إرجاع ${remainingAmount.toFixed(2)} USDT إلى محفظتك`,
               en: `💰 ${remainingAmount.toFixed(2)} USDT has been refunded to your wallet`,
@@ -2663,7 +2843,7 @@ async function checkAndDeleteExpiredTasks() {
             };
             message += refundMessages[lang];
           } else {
-            const remainingPoints = task.required_count - task.completed_count;
+            const remainingPoints = task.required_count - acceptedCount;
             const refundMessages = {
               ar: `🔄 تم إرجاع ${remainingPoints} نقطة تبادل`,
               en: `🔄 ${remainingPoints} exchange points have been refunded`,

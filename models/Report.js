@@ -55,12 +55,13 @@ export default class Report {
     return new Promise((resolve, reject) => {
       logger.database(`Getting recent reports by user ${userId} in last ${minutes} minutes`);
       
+      const mins = parseInt(minutes);
       db.get(
         `SELECT COUNT(*) as count 
          FROM reports 
          WHERE reporter_id = ? 
-         AND datetime(created_at) > datetime('now', '-${minutes} minutes')`,
-        [userId],
+         AND datetime(created_at) > datetime('now', ? || ' minutes')`,
+        [userId, `-${mins}`],
         (err, row) => {
           if (err) {
             logger.error(`Failed to get recent reports: ${err.message}`);
@@ -131,6 +132,12 @@ export default class Report {
   // تحديث حالة الإبلاغ
   static updateStatus(reportId, status, reviewerId) {
     return new Promise((resolve, reject) => {
+      const validStatuses = ['pending', 'approved', 'rejected', 'resolved'];
+      if (!validStatuses.includes(status)) {
+        logger.error(`Invalid report status: ${status}`);
+        reject(new Error(`Invalid report status: ${status}`));
+        return;
+      }
       logger.database(`Updating report ${reportId} status to: ${status}`);
       
       db.run(

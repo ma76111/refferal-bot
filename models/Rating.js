@@ -7,10 +7,18 @@ export default class Rating {
     return new Promise((resolve, reject) => {
       logInfo('RATING', `Creating rating: ${rating}/5 for user ${ratedUserId}`);
       
+      // التحقق من صحة قيمة التقييم
+      const ratingInt = parseInt(rating);
+      if (isNaN(ratingInt) || ratingInt < 1 || ratingInt > 5) {
+        logError('RATING', `Invalid rating value: ${rating}`);
+        reject(new Error(`Invalid rating value: ${rating}. Must be 1-5.`));
+        return;
+      }
+      
       db.run(
         `INSERT INTO ratings (task_id, rater_user_id, rated_user_id, rating, comment)
          VALUES (?, ?, ?, ?, ?)`,
-        [taskId, raterUserId, ratedUserId, rating, comment],
+        [taskId, raterUserId, ratedUserId, ratingInt, comment],
         function(err) {
           if (err) {
             logError('RATING', 'Failed to create rating', err);

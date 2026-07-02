@@ -140,13 +140,10 @@ export const adminPanelKeyboard = {
   reply_markup: {
     keyboard: [
       ['✅ مراجعة المهام', '💵 مراجعة الإيداعات'],
-      ['💸 مراجعة السحوبات', '🔍 البحث عن مستخدم'],
-      ['✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص'],
-      ['📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة'],
-      ['🔄 تغيير مهلة التحسين', '💰 تغيير الحد الأدنى للمكافأة'],
-      ['💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات'],
-      ['📢 رسالة جماعية', '📋 الاستئنافات'],
-      ['🗑️ حذف مهمة', '🔙 رجوع']
+      ['💸 مراجعة السحوبات', '📋 الاستئنافات'],
+      ['⚙️ الإعدادات', '🛠️ الأدوات'],
+      ['📊 الإحصائيات', '📢 رسالة جماعية'],
+      ['🔙 رجوع']
     ],
     resize_keyboard: true
   }
@@ -157,16 +154,41 @@ export const mainAdminPanelKeyboard = {
   reply_markup: {
     keyboard: [
       ['✅ مراجعة المهام', '💵 مراجعة الإيداعات'],
-      ['💸 مراجعة السحوبات', '🔍 البحث عن مستخدم'],
-      ['✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص'],
-      ['📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة'],
-      ['🔄 تغيير مهلة التحسين', '💰 تغيير الحد الأدنى للمكافأة'],
-      ['💸 تغيير الحد الأدنى للسحب', '📊 الإحصائيات'],
-      ['📢 رسالة جماعية', '📋 الاستئنافات'],
-      ['👥 إدارة الأدمنز', '🗑️ حذف مهمة'],
-      ['🔙 رجوع']
+      ['💸 مراجعة السحوبات', '📋 الاستئنافات'],
+      ['⚙️ الإعدادات', '🛠️ الأدوات'],
+      ['📊 الإحصائيات', '📢 رسالة جماعية'],
+      ['👥 إدارة الأدمنز', '🔙 رجوع']
     ],
     resize_keyboard: true
+  }
+};
+
+// قائمة الإعدادات الفرعية (inline)
+export const adminSettingsKeyboard = {
+  reply_markup: {
+    inline_keyboard: [
+      [{ text: '🔧 الحد الأقصى للأشخاص', callback_data: 'admin_setting_max_count' }],
+      [{ text: '📝 حد المهام للمستخدم', callback_data: 'admin_setting_max_tasks' }],
+      [{ text: '⏱️ وقت مهلة المهمة', callback_data: 'admin_setting_task_timeout' }],
+      [{ text: '🔄 مهلة التحسين', callback_data: 'admin_setting_improvement_timeout' }],
+      [{ text: '💰 حد أدنى مكافأة (تيليجرام)', callback_data: 'admin_setting_min_reward' }],
+      [{ text: '🌐 حد أدنى مكافأة (خارجي)', callback_data: 'admin_setting_min_external_reward' }],
+      [{ text: '🔄 تكلفة نقاط التبادل', callback_data: 'admin_setting_exchange_cost' }],
+      [{ text: '💸 الحد الأدنى للسحب', callback_data: 'admin_setting_min_withdrawal' }],
+      [{ text: '❌ إغلاق', callback_data: 'admin_settings_close' }]
+    ]
+  }
+};
+
+// قائمة الأدوات الفرعية (inline)
+export const adminToolsKeyboard = {
+  reply_markup: {
+    inline_keyboard: [
+      [{ text: '🔍 البحث عن مستخدم', callback_data: 'admin_tool_search' }],
+      [{ text: '✏️ تعديل نص الدعم', callback_data: 'admin_tool_support_text' }],
+      [{ text: '🗑️ حذف مهمة', callback_data: 'admin_tool_delete_task' }],
+      [{ text: '❌ إغلاق', callback_data: 'admin_tools_close' }]
+    ]
   }
 };
 

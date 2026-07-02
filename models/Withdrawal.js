@@ -51,6 +51,11 @@ class Withdrawal {
 
   static updateStatus(id, status, reviewedBy, rejectReason = null) {
     return new Promise((resolve, reject) => {
+      const validStatuses = ['pending', 'completed', 'rejected'];
+      if (!validStatuses.includes(status)) {
+        reject(new Error(`Invalid withdrawal status: ${status}`));
+        return;
+      }
       db.run(
         `UPDATE withdrawals 
          SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, reject_reason = ? 

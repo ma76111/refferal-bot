@@ -217,6 +217,18 @@ export async function handleDepositSteps(bot, msg) {
         const verificationResult = await binance.verifyDeposit(state.txid, 'USDT');
 
         if (verificationResult.verified) {
+          // التحقق من أن TXID غير مستخدم مسبقاً
+          const existing = await Deposit.findByTxId(state.txid);
+          if (existing) {
+            await bot.sendMessage(
+              chatId,
+              '❌ عملية التحويل هذه تم استخدامها مسبقاً!\n\n' +
+              'لا يمكنك استخدام نفس TXID أكثر من مرة.'
+            );
+            depositStates.delete(chatId);
+            return true;
+          }
+
           // التحقق من المبلغ
           const amountMatch = Math.abs(verificationResult.amount - state.amount) <= 0.01;
           
@@ -243,6 +255,14 @@ export async function handleDepositSteps(bot, msg) {
 
           // قبول تلقائياً إذا كان المبلغ مطابق
           if (amountMatch) {
+            // التحقق من أن الإيداع لم يتم قبوله مسبقاً
+            const existingDeposit = await Deposit.getById(depositId);
+            if (existingDeposit && existingDeposit.status !== 'pending') {
+              logger.warning(`Deposit ${depositId} already processed (status: ${existingDeposit.status})`);
+              depositStates.delete(chatId);
+              return true;
+            }
+            
             await Deposit.updateStatus(depositId, 'accept', null, 'تم التحقق تلقائياً عبر Binance API');
             await User.updateBalance(state.userId, verificationResult.amount);
 
@@ -368,41 +388,54 @@ export async function handleDepositReview(bot, query) {
   if (data.startsWith('deposit_accept_')) {
     const depositId = parseInt(data.split('_')[2]);
     logger.info(`Processing deposit acceptance: ${depositId}`);
-    
-    const deposit = await Deposit.getById(depositId);
-    
-    if (!deposit) {
-      logger.warning(`Deposit ${depositId} not found`);
-      await bot.answerCallbackQuery(query.id, { text: '❌ الطلب غير موجود' });
+
+    // حماية من الضغط المتكرر
+    const processingKey = `processing_deposit_${depositId}`;
+    if (global.processingDeposits && global.processingDeposits.has(processingKey)) {
+      await bot.answerCallbackQuery(query.id, { text: '⏳ جاري المعالجة...' });
       return;
     }
+    if (!global.processingDeposits) global.processingDeposits = new Set();
+    global.processingDeposits.add(processingKey);
 
-    if (deposit.status !== 'pending') {
-      logger.warning(`Deposit ${depositId} already reviewed (status: ${deposit.status})`);
-      await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
-      return;
+    try {
+      const deposit = await Deposit.getById(depositId);
+      
+      if (!deposit) {
+        logger.warning(`Deposit ${depositId} not found`);
+        await bot.answerCallbackQuery(query.id, { text: '❌ الطلب غير موجود' });
+        return;
+      }
+
+      if (deposit.status !== 'pending') {
+        logger.warning(`Deposit ${depositId} already reviewed (status: ${deposit.status})`);
+        await bot.answerCallbackQuery(query.id, { text: '⚠️ تمت المراجعة مسبقاً' });
+        return;
+      }
+
+      const user = await User.findByTelegramId(reviewerId);
+      await Deposit.updateStatus(depositId, 'accept', user?.id || null);
+      await User.updateBalance(deposit.user_id, deposit.amount);
+
+      logger.success(`Deposit ${depositId} accepted, ${deposit.amount} USDT added to user ${deposit.user_id}`);
+
+      await bot.sendMessage(
+        deposit.user_telegram_id,
+        `✅ تم قبول طلب الإيداع!\n\n` +
+        `🆔 رقم الطلب: ${depositId}\n` +
+        `💰 المبلغ المضاف: ${deposit.amount} USDT\n\n` +
+        `تم إضافة المبلغ إلى محفظتك بنجاح`
+      );
+
+      await bot.editMessageText(
+        query.message.text + '\n\n✅ تم القبول',
+        { chat_id: query.message.chat.id, message_id: query.message.message_id }
+      );
+
+      await bot.answerCallbackQuery(query.id, { text: '✅ تمت الموافقة' });
+    } finally {
+      global.processingDeposits.delete(processingKey);
     }
-
-    const user = await User.findByTelegramId(reviewerId);
-    await Deposit.updateStatus(depositId, 'accept', user.id);
-    await User.updateBalance(deposit.user_id, deposit.amount);
-
-    logger.success(`Deposit ${depositId} accepted, ${deposit.amount} USDT added to user ${deposit.user_id}`);
-
-    await bot.sendMessage(
-      deposit.user_telegram_id,
-      `✅ تم قبول طلب الإيداع!\n\n` +
-      `🆔 رقم الطلب: ${depositId}\n` +
-      `💰 المبلغ المضاف: ${deposit.amount} USDT\n\n` +
-      `تم إضافة المبلغ إلى محفظتك بنجاح`
-    );
-
-    await bot.editMessageText(
-      query.message.text + '\n\n✅ تم القبول',
-      { chat_id: query.message.chat.id, message_id: query.message.message_id }
-    );
-
-    await bot.answerCallbackQuery(query.id, { text: '✅ تمت الموافقة' });
   } else if (data.startsWith('deposit_reject_')) {
     const depositId = parseInt(data.split('_')[2]);
     logger.info(`Initiating deposit rejection flow for: ${depositId}`);
@@ -452,7 +485,7 @@ export async function handleDepositRejectReason(bot, msg) {
   }
 
   const user = await User.findByTelegramId(msg.from.id);
-  await Deposit.updateStatus(state.depositId, 'reject', user.id, reason);
+  await Deposit.updateStatus(state.depositId, 'reject', user?.id || null, reason);
 
   logger.success(`Deposit ${state.depositId} rejected by admin ${msg.from.id}`);
 

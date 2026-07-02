@@ -28,6 +28,13 @@ export default class Violation {
       const { userId, type, points, reason, expiresAt } = violationData;
       
       logger.database(`Creating violation: user=${userId}, type=${type}, points=${points}`);
+
+      // التحقق من صحة النقاط
+      if (!Number.isInteger(points) || points <= 0) {
+        logger.error(`Invalid violation points: ${points}`);
+        reject(new Error(`Violation points must be a positive integer`));
+        return;
+      }
       
       db.run(
         `INSERT INTO violations (user_id, type, points, reason, expires_at)

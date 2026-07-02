@@ -17,23 +17,57 @@ export default class Restriction {
       const { userId, type, duration, reason } = restrictionData;
       
       logger.database(`Creating restriction: user=${userId}, type=${type}, duration=${duration}`);
-      
-      const endDate = duration ? `datetime('now', '+${duration} hours')` : null;
-      
-      db.run(
-        `INSERT INTO restrictions (user_id, type, duration, end_date, reason)
-         VALUES (?, ?, ?, ${endDate ? endDate : 'NULL'}, ?)`,
-        [userId, type, duration, reason],
-        function(err) {
-          if (err) {
-            logger.error(`Failed to create restriction: ${err.message}`);
-            reject(err);
-          } else {
-            logger.success(`Restriction created with ID: ${this.lastID}`);
-            resolve(this.lastID);
-          }
+
+      // التحقق من نوع التقييد
+      const validTypes = Object.values(RESTRICTION_TYPES);
+      if (!validTypes.includes(type)) {
+        logger.error(`Invalid restriction type: ${type}`);
+        reject(new Error(`Invalid restriction type: ${type}`));
+        return;
+      }
+
+      // التحقق من صحة المدة
+      if (duration !== undefined && duration !== null) {
+        const hours = parseInt(duration);
+        if (isNaN(hours) || hours <= 0) {
+          logger.error(`Invalid restriction duration: ${duration}`);
+          reject(new Error(`Invalid restriction duration: ${duration}`));
+          return;
         }
-      );
+      }
+      
+      if (duration) {
+        const hours = parseInt(duration);
+        db.run(
+          `INSERT INTO restrictions (user_id, type, duration, end_date, reason)
+           VALUES (?, ?, ?, datetime('now', ? || ' hours'), ?)`,
+          [userId, type, duration, `+${hours}`, reason],
+          function(err) {
+            if (err) {
+              logger.error(`Failed to create restriction: ${err.message}`);
+              reject(err);
+            } else {
+              logger.success(`Restriction created with ID: ${this.lastID}`);
+              resolve(this.lastID);
+            }
+          }
+        );
+      } else {
+        db.run(
+          `INSERT INTO restrictions (user_id, type, duration, end_date, reason)
+           VALUES (?, ?, ?, NULL, ?)`,
+          [userId, type, duration, reason],
+          function(err) {
+            if (err) {
+              logger.error(`Failed to create restriction: ${err.message}`);
+              reject(err);
+            } else {
+              logger.success(`Restriction created with ID: ${this.lastID}`);
+              resolve(this.lastID);
+            }
+          }
+        );
+      }
     });
   }
 

@@ -23,7 +23,15 @@ export async function handleStartAppeal(bot, msg) {
     // التحقق من أن المستخدم محظور
     const userStatus = await ViolationSystem.checkUserStatus(user.id);
     
-    if (!userStatus.banStatus || userStatus.banStatus.status !== 'active') {
+    if (userStatus.allowed) {
+      await bot.sendMessage(chatId, '⚠️ أنت غير محظور حالياً');
+      return;
+    }
+    
+    // الحصول على الحظر النشط
+    const activeBan = await Ban.getActiveBan(user.id);
+    
+    if (!activeBan) {
       await bot.sendMessage(chatId, '⚠️ أنت غير محظور حالياً');
       return;
     }
@@ -40,24 +48,24 @@ export async function handleStartAppeal(bot, msg) {
     
     appealStates.set(chatId, {
       userId: user.id,
-      banId: userStatus.banStatus.id,
+      banId: activeBan.id,
       step: 'awaiting_reason',
-      timestamp: Date.now() // ✅ إضافة timestamp
+      timestamp: Date.now()
     });
     
     const lang = user.language || 'ar';
     const messages = {
       ar: '📝 **تقديم استئناف**\n\n' +
-          `⚠️ أنت محظور حالياً: ${userStatus.banStatus.type === 'permanent' ? 'حظر دائم' : 'حظر مؤقت'}\n` +
-          `📋 السبب: ${userStatus.banStatus.reason || 'غير محدد'}\n\n` +
+          `⚠️ أنت محظور حالياً: ${activeBan.type === 'permanent' ? 'حظر دائم' : 'حظر مؤقت'}\n` +
+          `📋 السبب: ${activeBan.reason || 'غير محدد'}\n\n` +
           '💬 اشرح سبب طلب رفع الحظر:',
       en: '📝 **Submit Appeal**\n\n' +
-          `⚠️ You are currently banned: ${userStatus.banStatus.type === 'permanent' ? 'Permanent ban' : 'Temporary ban'}\n` +
-          `📋 Reason: ${userStatus.banStatus.reason || 'Not specified'}\n\n` +
+          `⚠️ You are currently banned: ${activeBan.type === 'permanent' ? 'Permanent ban' : 'Temporary ban'}\n` +
+          `📋 Reason: ${activeBan.reason || 'Not specified'}\n\n` +
           '💬 Explain why you want the ban lifted:',
       ru: '📝 **Подать апелляцию**\n\n' +
-          `⚠️ Вы заблокированы: ${userStatus.banStatus.type === 'permanent' ? 'Постоянная блокировка' : 'Временная блокировка'}\n` +
-          `📋 Причина: ${userStatus.banStatus.reason || 'Не указана'}\n\n` +
+          `⚠️ Вы заблокированы: ${activeBan.type === 'permanent' ? 'Постоянная блокировка' : 'Временная блокировка'}\n` +
+          `📋 Причина: ${activeBan.reason || 'Не указана'}\n\n` +
           '💬 Объясните, почему вы хотите снять блокировку:'
     };
     
@@ -190,9 +198,9 @@ export async function handleAppealReview(bot, query) {
     
     if (action === 'approve') {
       // قبول الاستئناف - رفع الحظر
-      await Appeal.updateStatus(appealId, 'approved', reviewer.id, 'تم قبول الاستئناف');
-      await Ban.updateStatus(appeal.ban_id, 'lifted');
-      await User.updateBanStatus(appeal.user_id, false);
+      await Appeal.updateStatus(appealId, 'approved', reviewer?.id || null, 'تم قبول الاستئناف');
+      await Ban.lift(appeal.ban_id, reviewer?.id || null);
+      await User.updateBanStatus(appeal.user_id, 'none', null);
       
       // إشعار المستخدم
       const user = await User.findById(appeal.user_id);
@@ -227,7 +235,7 @@ export async function handleAppealReview(bot, query) {
       // رفض الاستئناف
       appealStates.set(chatId, {
         appealId,
-        reviewerId: reviewer.id,
+        reviewerId: reviewer?.id || null,
         step: 'awaiting_reject_note',
         timestamp: Date.now() // ✅ إضافة timestamp
       });

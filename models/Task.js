@@ -53,8 +53,7 @@ export default class Task {
          GROUP BY t.id
          ORDER BY 
            CASE WHEN t.task_type = 'paid' THEN t.reward_per_user ELSE 0 END DESC,
-           t.created_at DESC
-         LIMIT 11`,
+           t.created_at DESC`,
         [userId, userId, userId, userId],
         (err, rows) => {
           if (err) {
@@ -124,27 +123,6 @@ export default class Task {
             const count = row?.count || 0;
             logInfo('TASK', `User ${userId} has ${count} active tasks`);
             resolve(count);
-          }
-        }
-      );
-    });
-  }
-
-  static incrementCompleted(taskId) {
-    return new Promise((resolve, reject) => {
-      logInfo('TASK', `Incrementing completed count for task ${taskId}`);
-      
-      db.run(
-        'UPDATE tasks SET completed_count = completed_count + 1 WHERE id = ?',
-        [taskId],
-        (err) => {
-          if (err) {
-            logError('TASK', `Failed to increment task ${taskId}`, err);
-            reject(err);
-          } else {
-            logSuccess('TASK', `Task ${taskId} completed count incremented`);
-            logDatabase('UPDATE', 'tasks', { id: taskId, action: 'increment_completed' });
-            resolve();
           }
         }
       );
@@ -256,6 +234,9 @@ export default class Task {
     });
   }
 
+  // ملاحظة: completed_count = (pending + accepted) submissions
+  // بيتزود وقت التقديم ويتنقص وقت الرفض فقط
+  // عند القبول: completed_count يفضل كما هو (عكس الحالة pending → accepted)
   static incrementPendingCount(taskId) {
     return new Promise((resolve, reject) => {
       logInfo('TASK', `Incrementing pending count for task ${taskId}`);
@@ -306,14 +287,15 @@ export default class Task {
       // حساب التاريخ قبل 7 أيام
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const sevenDaysAgoStr = sevenDaysAgo.toISOString();
+      // استخدام تنسيق متوافق مع SQLite (YYYY-MM-DD HH:MM:SS)
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString().replace('T', ' ').substring(0, 19);
       
       // أولاً: الحصول على المهام المنتهية لإرجاع النقاط/الأموال
       db.all(
         `SELECT t.*, u.telegram_id as owner_telegram_id 
          FROM tasks t 
          JOIN users u ON t.owner_id = u.id
-         WHERE t.created_at < ? AND t.status = 'active'`,
+         WHERE datetime(t.created_at) < datetime(?) AND t.status = 'active'`,
         [sevenDaysAgoStr],
         (err, expiredTasks) => {
           if (err) {
@@ -332,7 +314,7 @@ export default class Task {
           
           // حذف المهام المنتهية
           db.run(
-            'DELETE FROM tasks WHERE created_at < ? AND status = "active"',
+            'DELETE FROM tasks WHERE datetime(created_at) < datetime(?) AND status = "active"',
             [sevenDaysAgoStr],
             function(err) {
               if (err) {

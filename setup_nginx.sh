@@ -5,6 +5,13 @@
 EMAIL=${1:-"admin@example.com"}
 DOMAIN="ducktasks.duckdns.org"
 
+echo "==> Opening firewall ports 80 and 443..."
+ufw allow 80 2>/dev/null || true
+ufw allow 443 2>/dev/null || true
+ufw reload 2>/dev/null || true
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+
 echo "==> Writing nginx config..."
 cat > /etc/nginx/conf.d/ducktasks.conf << 'EOF'
 server {

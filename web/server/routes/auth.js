@@ -6,7 +6,7 @@ const router = Router();
 
 // POST /api/auth/telegram
 // يستقبل بيانات Telegram Login Widget ويرجع JWT
-router.post('/telegram', (req, res) => {
+router.post('/telegram', async (req, res) => {
   const data = req.body;
 
   if (!verifyTelegramAuth(data)) {
@@ -15,7 +15,7 @@ router.post('/telegram', (req, res) => {
 
   const telegramId = parseInt(data.id);
 
-  db.get('SELECT * FROM users WHERE telegram_id = ?', [telegramId], (err, user) => {
+  db.get('SELECT * FROM users WHERE telegram_id = ?', [telegramId], async (err, user) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     if (!user) {
       return res.status(403).json({ error: 'User not registered. Please start the bot first.' });
@@ -25,6 +25,16 @@ router.post('/telegram', (req, res) => {
     }
 
     const token = generateToken(user);
+
+    // تسجيل نشاط تسجيل الدخول
+    try {
+      const { default: ActivityLog } = await import('../../models/ActivityLog.js');
+      await ActivityLog.log(user.id, 'login', {
+        ip: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip,
+        user_agent: req.headers['user-agent'],
+      });
+    } catch (_) { /* ignore */ }
+
     res.json({
       token,
       user: {

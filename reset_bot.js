@@ -12,36 +12,22 @@ const rl = readline.createInterface({
 });
 
 console.log('╔════════════════════════════════════════════════════════════╗');
-console.log('║         🔄 سكريبت إعادة تعيين البوت بالكامل            ║');
-console.log('║                    الإصدار 2.2                          ║');
+console.log('║         🔄 سكريبت إعادة تعيين البوت بالكامل             ║');
 console.log('╚════════════════════════════════════════════════════════════╝\n');
 
-console.log('⚠️  تحذير: هذا السكريبت سيحذف:\n');
-console.log('   ❌ قاعدة البيانات (bot.db) - جميع الجداول');
-console.log('      • المستخدمون والمهام');
-console.log('      • الإثباتات والتقييمات');
-console.log('      • الإيداعات والسحوبات');
-console.log('      • المخالفات والحظر');
-console.log('      • الرسائل الجماعية والاستئنافات');
-console.log('   ❌ جميع ملفات السجلات (*.log)');
-console.log('   ❌ ملفات التوثيق الإضافية');
-console.log('   ❌ ملفات الاختبار والـ migration');
-console.log('   ❌ ملفات مؤقتة أخرى\n');
+console.log('⚠️  سيتم حذف كل البيانات:\n');
+console.log('   ❌ قاعدة البيانات (bot.db) - كل المستخدمين والمهام والبيانات');
+console.log('   ❌ ملفات السجلات (*.log)\n');
+console.log('✅ سيتم الاحتفاظ بكل الكود والإعدادات\n');
 
-console.log('✅ سيتم الاحتفاظ بـ:\n');
-console.log('   ✓ الكود المصدري');
-console.log('   ✓ ملف .env (الإعدادات)');
-console.log('   ✓ ملف README.md');
-console.log('   ✓ ملف .gitignore\n');
-
-rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ (اكتب "نعم" للتأكيد): ', (answer) => {
+rl.question('❓ هل أنت متأكد؟ (اكتب "نعم" للتأكيد): ', (answer) => {
   if (answer.toLowerCase() !== 'نعم' && answer.toLowerCase() !== 'yes') {
     console.log('\n❌ تم إلغاء العملية');
     rl.close();
     process.exit(0);
   }
 
-  console.log('\n🔄 بدء إعادة التعيين...\n');
+  console.log('\n🔄 جاري إعادة التعيين...\n');
 
   let deletedCount = 0;
 
@@ -56,112 +42,32 @@ rl.question('❓ هل أنت متأكد من إعادة تعيين البوت؟ 
   }
 
   // 2. حذف ملفات السجلات
-  const logFiles = fs.readdirSync(__dirname).filter(file => file.endsWith('.log'));
-  if (logFiles.length > 0) {
-    logFiles.forEach(file => {
-      fs.unlinkSync(path.join(__dirname, file));
-      deletedCount++;
-    });
-    console.log(`✅ تم حذف ${logFiles.length} ملف سجلات`);
-  } else {
-    console.log('⚠️  لا توجد ملفات سجلات');
-  }
-
-  // 3. حذف ملفات التوثيق الإضافية (ما عدا الملفات المهمة)
-  const keepMdFiles = [
-    'README.md'
-  ];
-  
-  const mdFiles = fs.readdirSync(__dirname).filter(file => 
-    file.endsWith('.md') && !keepMdFiles.includes(file)
-  );
-  
-  if (mdFiles.length > 0) {
-    mdFiles.forEach(file => {
-      fs.unlinkSync(path.join(__dirname, file));
-      deletedCount++;
-    });
-    console.log(`✅ تم حذف ${mdFiles.length} ملف توثيق إضافي`);
-  }
-
-  // 4. حذف ملفات الـ migration
-  const migrationFiles = fs.readdirSync(__dirname).filter(file => 
-    file.startsWith('migrate_') && file.endsWith('.js')
-  );
-  if (migrationFiles.length > 0) {
-    migrationFiles.forEach(file => {
-      fs.unlinkSync(path.join(__dirname, file));
-      deletedCount++;
-    });
-    console.log(`✅ تم حذف ${migrationFiles.length} ملف migration`);
-  }
-
-  // 5. حذف ملفات الاختبار
-  const testFiles = [
-    'test_admin.txt',
-    'test_bot.js',
-    'test_syntax.js',
-    'PUSH_TO_GITHUB.txt',
-    'add_exchange_points.js',
-    'backup_database.js'
-  ];
-  testFiles.forEach(file => {
-    const filePath = path.join(__dirname, file);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`✅ تم حذف ${file}`);
-      deletedCount++;
-    }
-  });
-
-  // 6. حذف ملف User_test.js إن وجد
-  const userTestPath = path.join(__dirname, 'models', 'User_test.js');
-  if (fs.existsSync(userTestPath)) {
-    fs.unlinkSync(userTestPath);
-    console.log('✅ تم حذف models/User_test.js');
+  const logFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.log'));
+  logFiles.forEach(file => {
+    fs.unlinkSync(path.join(__dirname, file));
     deletedCount++;
+  });
+  if (logFiles.length > 0) console.log(`✅ تم حذف ${logFiles.length} ملف سجلات`);
+
+  // 3. حذف نسخ الـ backup
+  const backupDir = path.join(__dirname, 'backups');
+  if (fs.existsSync(backupDir)) {
+    const backups = fs.readdirSync(backupDir).filter(f => f.endsWith('.db'));
+    backups.forEach(f => {
+      fs.unlinkSync(path.join(backupDir, f));
+      deletedCount++;
+    });
+    if (backups.length > 0) console.log(`✅ تم حذف ${backups.length} نسخة backup`);
   }
 
   console.log('\n╔════════════════════════════════════════════════════════════╗');
-  console.log('║              🎉 تم إعادة التعيين بنجاح!                 ║');
+  console.log('║              ✅ تم إعادة التعيين بنجاح!                  ║');
   console.log('╚════════════════════════════════════════════════════════════╝\n');
-
-  console.log(`📊 الإحصائيات:`);
-  console.log(`   🗑️  تم حذف ${deletedCount} ملف\n`);
-
-  console.log('📋 الخطوات التالية:\n');
-  console.log('   1️⃣  تأكد من إعدادات ملف .env');
-  console.log('   2️⃣  شغل البوت: node index.js');
-  console.log('   3️⃣  سيتم إنشاء قاعدة بيانات جديدة تلقائياً');
-  console.log('   4️⃣  البوت جاهز للاستخدام!\n');
-
-  console.log('📚 الجداول التي سيتم إنشاؤها تلقائياً:\n');
-  console.log('   ✓ users - المستخدمون');
-  console.log('   ✓ tasks - المهام');
-  console.log('   ✓ task_submissions - الإثباتات');
-  console.log('   ✓ deposits - الإيداعات');
-  console.log('   ✓ withdrawals - السحوبات');
-  console.log('   ✓ reports - الإبلاغات');
-  console.log('   ✓ violations - المخالفات');
-  console.log('   ✓ bans - الحظر');
-  console.log('   ✓ restrictions - التقييدات');
-  console.log('   ✓ appeals - الاستئنافات');
-  console.log('   ✓ ratings - التقييمات (جديد)');
-  console.log('   ✓ broadcasts - الرسائل الجماعية (جديد)');
-  console.log('   ✓ settings - الإعدادات');
-  console.log('   ✓ hidden_tasks - المهام المخفية\n');
-
-  console.log('💡 ملاحظة: يمكنك الآن البدء من جديد بدون أي بيانات قديمة\n');
-  console.log('🎉 الإصدار 2.2 يتضمن:\n');
-  console.log('   • نظام الإحصائيات 📊');
-  console.log('   • نظام التقييمات ⭐');
-  console.log('   • نظام الرسائل الجماعية 📢');
-  console.log('   • نظام الاستئناف 📝');
-  console.log('   • نظام المخالفات والحظر المتقدم 🚫');
-  console.log('   • فحص الرصيد قبل إنشاء المهام المدفوعة 💰');
-  console.log('   • خصم نقاط التبادل عند إنشاء المهام ✅');
-  console.log('   • إصلاح timeout الإثباتات ⏱️');
-  console.log('   • إصلاح نظام الإبلاغات والمخالفات 🔧\n');
+  console.log(`🗑️  تم حذف ${deletedCount} ملف\n`);
+  console.log('📋 الخطوات التالية:');
+  console.log('   1️⃣  شغّل البوت: node index.js');
+  console.log('   2️⃣  سيتم إنشاء قاعدة بيانات جديدة فارغة تلقائياً');
+  console.log('   3️⃣  البوت جاهز كأنه جديد تماماً!\n');
 
   rl.close();
 });

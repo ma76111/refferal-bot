@@ -1,7 +1,63 @@
 import sqlite3 from 'sqlite3';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import config from './config.js';
+import { backupToGithub } from './backup_to_github.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new sqlite3.Database(config.DATABASE_PATH);
+
+// WAL mode: يحمي من فقدان البيانات عند الانقطاع المفاجئ
+db.run('PRAGMA journal_mode=WAL');
+db.run('PRAGMA synchronous=NORMAL');
+db.run('PRAGMA cache_size=10000');
+db.run('PRAGMA temp_store=MEMORY');
+
+// Indexes لتسريع الـ queries
+db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)');
+db.run('CREATE INDEX IF NOT EXISTS idx_submissions_user ON task_submissions(user_id)');
+db.run('CREATE INDEX IF NOT EXISTS idx_submissions_task ON task_submissions(task_id)');
+db.run('CREATE INDEX IF NOT EXISTS idx_submissions_status ON task_submissions(status)');
+db.run('CREATE INDEX IF NOT EXISTS idx_submissions_created ON task_submissions(created_at)');
+db.run('CREATE INDEX IF NOT EXISTS idx_hidden_user ON hidden_tasks(user_id)');
+db.run('CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id)');
+db.run('CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status)');
+db.run('CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status)');
+db.run('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read)');
+db.run('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, priority)');
+db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_ip ON device_logs(ip_address)');
+db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_fingerprint ON device_logs(fingerprint)');
+db.run('CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at)');
+
+// Backup تلقائي كل 30 دقيقة
+const BACKUP_DIR = path.join(__dirname, 'backups');
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
+
+function runBackup() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = path.join(BACKUP_DIR, `bot_${timestamp}.db`);
+  fs.copyFile(config.DATABASE_PATH, dest, (err) => {
+    if (err) return;
+    // احتفظ بآخر 48 نسخة فقط (يوم كامل)
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith('.db'))
+      .sort();
+    if (files.length > 48) {
+      files.slice(0, files.length - 48).forEach(f =>
+        fs.unlinkSync(path.join(BACKUP_DIR, f))
+      );
+    }
+  });
+}
+
+setInterval(runBackup, 30 * 60 * 1000); // كل 30 دقيقة
+
+// Backup إلى GitHub كل 24 ساعة
+setInterval(backupToGithub, 24 * 60 * 60 * 1000);
+// رفع فوري عند بدء التشغيل بعد دقيقة
+setTimeout(backupToGithub, 60 * 1000);
 
 db.serialize(() => {
   // جدول المستخدمين
@@ -297,6 +353,150 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (added_by) REFERENCES users(id)
   )`);
+
+  // جدول تفضيلات الإشعارات
+  db.run(`CREATE TABLE IF NOT EXISTS notification_prefs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    submission_accepted INTEGER DEFAULT 1,
+    submission_rejected INTEGER DEFAULT 1,
+    task_completed INTEGER DEFAULT 1,
+    promotional INTEGER DEFAULT 1,
+    system_update INTEGER DEFAULT 1,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // جدول الإشعارات
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    link TEXT,
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // جدول تذاكر الدعم
+  db.run(`CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_no TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    subject TEXT NOT NULL,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'open',
+    assigned_to INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (assigned_to) REFERENCES users(id)
+  )`);
+
+  // جدول رسائل التذاكر
+  db.run(`CREATE TABLE IF NOT EXISTS ticket_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    is_admin INTEGER DEFAULT 0,
+    body TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id),
+    FOREIGN KEY (sender_id) REFERENCES users(id)
+  )`);
+
+  // جدول سجلات الأجهزة
+  db.run(`CREATE TABLE IF NOT EXISTS device_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    ip_address TEXT NOT NULL,
+    user_agent TEXT,
+    fingerprint TEXT,
+    country_code TEXT,
+    session_type TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // جدول سجل الأنشطة
+  db.run(`CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // جدول تدقيق المهام
+  db.run(`CREATE TABLE IF NOT EXISTS task_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    changed_by INTEGER NOT NULL,
+    field_name TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+  )`);
+
+  // إضافة حقول جديدة لجدول المهام
+  db.run(`ALTER TABLE tasks ADD COLUMN paused_at DATETIME DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding paused_at:', err.message);
+    }
+  });
+
+  db.run(`ALTER TABLE tasks ADD COLUMN country_code TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding country_code to tasks:', err.message);
+    }
+  });
+
+  // إضافة حقول جديدة لجدول المستخدمين
+  db.run(`ALTER TABLE users ADD COLUMN notification_channel TEXT DEFAULT 'both'`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding notification_channel:', err.message);
+    }
+  });
+
+  db.run(`ALTER TABLE users ADD COLUMN last_known_ip TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding last_known_ip:', err.message);
+    }
+  });
+
+  db.run(`ALTER TABLE users ADD COLUMN country_code TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding country_code to users:', err.message);
+    }
+  });
+
+  // إضافة حقول جديدة لجدول الإيداعات
+  db.run(`ALTER TABLE deposits ADD COLUMN wallet_address TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding wallet_address to deposits:', err.message);
+    }
+  });
+
+  db.run(`ALTER TABLE deposits ADD COLUMN network TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding network to deposits:', err.message);
+    }
+  });
+
+  // إضافة حقول جديدة لجدول السحوبات
+  db.run(`ALTER TABLE withdrawals ADD COLUMN ton_address TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes('duplicate column')) {
+      console.error('Error adding ton_address:', err.message);
+    }
+  });
+
 });
 
 export default db;

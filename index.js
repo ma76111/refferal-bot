@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+﻿import TelegramBot from 'node-telegram-bot-api';
 import config from './config.js';
 import db from './database.js';
 import User from './models/User.js';
@@ -58,6 +58,13 @@ import {
   handleAddAdmin,
   handleRemoveAdmin,
   handleDeleteTask,
+  handleViewViolations,
+  handleViolationSteps,
+  handleActiveBans,
+  handleLiftBan,
+  handlePendingReports,
+  handleAddRestriction,
+  handleRestrictionStep,
   adminStates as adminStatesFromHandler
 } from './handlers/adminHandler.js';
 import {
@@ -1266,7 +1273,7 @@ bot.onText(/⚙️ الإعدادات/, async (msg) => {
     `🔄 مهلة التحسين: ${improvTimeout / 60} دقيقة\n` +
     `💰 حد أدنى مكافأة (تيليجرام): ${minReward} USDT\n` +
     `🌐 حد أدنى مكافأة (خارجي): ${minExtReward} USDT\n` +
-    `🔄 تكلفة نقاط التبادل: ${exchCost} نقطة/شخص\n` +
+    `🔄 تكلفة نقاط المقايضة: ${exchCost} نقطة/شخص\n` +
     `💸 الحد الأدنى للسحب: ${minWithdrawal} USDT\n\n` +
     `اختر الإعداد للتعديل:`;
 
@@ -1572,8 +1579,8 @@ bot.onText(/🌐 حد أدنى مكافأة خارجية/, async (msg) => {
   );
 });
 
-// معالج تغيير تكلفة نقاط التبادل (للأدمن فقط)
-bot.onText(/🔄 تكلفة نقاط التبادل/, async (msg) => {
+// معالج تغيير تكلفة نقاط المقايضة (للأدمن فقط)
+bot.onText(/🔄 تكلفة نقاط المقايضة/, async (msg) => {
   logCommand('🔄 Change Exchange Points Cost', msg.from.id, msg.from.username);
   
   const isAdmin = await Admin.isAdmin(msg.from.id);
@@ -1588,7 +1595,7 @@ bot.onText(/🔄 تكلفة نقاط التبادل/, async (msg) => {
   
   await bot.sendMessage(
     msg.chat.id,
-    `🔄 تغيير تكلفة نقاط التبادل\n\n` +
+    `🔄 تغيير تكلفة نقاط المقايضة\n\n` +
     `🔢 التكلفة الحالية: ${currentCost} نقطة لكل شخص مطلوب\n\n` +
     `📝 أرسل التكلفة الجديدة (عدد النقاط لكل شخص):`,
     {
@@ -1704,6 +1711,8 @@ bot.on('message', async (msg) => {
                   await handleWithdrawalRejectReason(bot, msg) ||
                   await handleRejectMessage(bot, msg) ||
                   await handleAdminSteps(bot, msg) ||
+                  await handleViolationSteps(bot, msg) ||
+                  await handleRestrictionStep(bot, msg) ||
                   await handleRatingComment(bot, msg) ||
                   await handleBroadcastMessage(bot, msg) ||
                   await handleAppealReason(bot, msg) ||
@@ -1778,7 +1787,7 @@ bot.on('callback_query', async (query) => {
       'admin_setting_improvement_timeout':   { step: 'awaiting_improvement_timeout',    label: '🔄 مهلة التحسين (بالدقائق)', getValue: async () => (await Settings.getImprovementTimeout()) / 60, unit: 'دقيقة' },
       'admin_setting_min_reward':            { step: 'awaiting_min_reward',             label: '💰 حد أدنى مكافأة (تيليجرام)', getValue: () => Settings.getMinReward(), unit: 'USDT' },
       'admin_setting_min_external_reward':   { step: 'awaiting_min_external_reward',    label: '🌐 حد أدنى مكافأة (روابط خارجية)', getValue: () => Settings.getMinExternalReward(), unit: 'USDT' },
-      'admin_setting_exchange_cost':         { step: 'awaiting_exchange_points_cost',   label: '🔄 تكلفة نقاط التبادل', getValue: () => Settings.getExchangePointsCost(), unit: 'نقطة/شخص' },
+      'admin_setting_exchange_cost':         { step: 'awaiting_exchange_points_cost',   label: '🔄 تكلفة نقاط المقايضة', getValue: () => Settings.getExchangePointsCost(), unit: 'نقطة/شخص' },
       'admin_setting_min_withdrawal':        { step: 'awaiting_min_withdrawal',         label: '💸 الحد الأدنى للسحب', getValue: () => Settings.getMinWithdrawal(), unit: 'USDT' }
     };
 
@@ -1806,6 +1815,86 @@ bot.on('callback_query', async (query) => {
   if (data === 'admin_tool_delete_task') {
     await bot.answerCallbackQuery(query.id);
     await handleDeleteTask(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_violations') {
+    await bot.answerCallbackQuery(query.id);
+    await handleViewViolations(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_active_bans') {
+    await bot.answerCallbackQuery(query.id);
+    await handleActiveBans(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_reports') {
+    await bot.answerCallbackQuery(query.id);
+    await handlePendingReports(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  if (data === 'admin_tool_restrict') {
+    await bot.answerCallbackQuery(query.id);
+    await handleAddRestriction(bot, { chat: { id: query.message.chat.id }, from: query.from });
+    return;
+  }
+
+  // رفع حظر من قائمة المحظورين
+  if (data.startsWith('admin_lift_ban_')) {
+    const userId = parseInt(data.split('_')[3]);
+    await bot.answerCallbackQuery(query.id);
+    await handleLiftBan(bot, { chat: { id: query.message.chat.id }, from: query.from }, userId);
+    return;
+  }
+
+  // حذف مخالفة
+  if (data.startsWith('admin_remove_violation_')) {
+    const userId = parseInt(data.split('_')[3]);
+    await bot.answerCallbackQuery(query.id);
+    const adminStateMsg = { chat: { id: query.message.chat.id }, from: query.from };
+    adminStatesFromHandler.set(query.message.chat.id, { step: 'awaiting_violation_id_to_remove' });
+    await bot.sendMessage(query.message.chat.id, '🗑️ أرسل رقم ID المخالفة لحذفها:', {
+      reply_markup: { keyboard: [['❌ إلغاء']], resize_keyboard: true }
+    });
+    return;
+  }
+
+  // إعادة ضبط نقاط المخالفات
+  if (data.startsWith('admin_reset_violations_')) {
+    const userId = parseInt(data.split('_')[3]);
+    await bot.answerCallbackQuery(query.id);
+    const db = (await import('./database.js')).default;
+    db.run(`UPDATE violations SET status = 'removed' WHERE user_id = ? AND status = 'active'`, [userId]);
+    db.run(`UPDATE users SET violation_points = 0 WHERE id = ?`, [userId]);
+    await bot.sendMessage(query.message.chat.id, `✅ تم إعادة ضبط نقاط المخالفات للمستخدم`);
+    return;
+  }
+
+  // قبول/رفض إبلاغ
+  if (data.startsWith('admin_report_approve_') || data.startsWith('admin_report_reject_')) {
+    const reportId = parseInt(data.split('_').pop());
+    const approve = data.startsWith('admin_report_approve_');
+    await bot.answerCallbackQuery(query.id);
+    const Report = (await import('./models/Report.js')).default;
+    await Report.updateStatus(reportId, approve ? 'approved' : 'rejected', query.from.id);
+    await bot.editMessageText(
+      approve ? `✅ تم قبول الإبلاغ #${reportId}` : `❌ تم رفض الإبلاغ #${reportId}`,
+      { chat_id: query.message.chat.id, message_id: query.message.message_id }
+    );
+    return;
+  }
+
+  // إضافة تقييد
+  if (data.startsWith('admin_restrict_')) {
+    const type = data.replace('admin_restrict_', '');
+    await bot.answerCallbackQuery(query.id);
+    adminStatesFromHandler.set(query.message.chat.id, { step: 'awaiting_restriction_user_id', restrictType: type });
+    await bot.sendMessage(query.message.chat.id, `🔒 أرسل ID المستخدم لتطبيق التقييد (${type}):`, {
+      reply_markup: { keyboard: [['❌ إلغاء']], resize_keyboard: true }
+    });
     return;
   }
 
@@ -1911,7 +2000,7 @@ bot.on('callback_query', async (query) => {
       return;
     }
     
-    // معالج تعديل نقاط التبادل
+    // معالج تعديل نقاط المقايضة
     if (data.startsWith('admin_edit_exchange_')) {
       const userId = parseInt(data.split('_')[3]);
       const user = await User.findByTelegramId(userId);
@@ -1928,7 +2017,7 @@ bot.on('callback_query', async (query) => {
       await bot.answerCallbackQuery(query.id);
       await bot.sendMessage(
         query.message.chat.id,
-        `🔄 تعديل نقاط التبادل للمستخدم\n\n` +
+        `🔄 تعديل نقاط المقايضة للمستخدم\n\n` +
         `👤 المستخدم: ${user.username ? '@' + user.username : user.telegram_id}\n` +
         `🔄 النقاط الحالية: ${exchangePoints}\n\n` +
         `أرسل عدد النقاط الجديد:`,
@@ -1980,7 +2069,7 @@ bot.on('callback_query', async (query) => {
           inline_keyboard: [
             [
               { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
-              { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+              { text: '🔄 تعديل نقاط المقايضة', callback_data: `admin_edit_exchange_${user.telegram_id}` }
             ],
             [
               { text: '✅ إلغاء الحظر', callback_data: `admin_unban_${user.telegram_id}` }
@@ -2025,7 +2114,7 @@ bot.on('callback_query', async (query) => {
           inline_keyboard: [
             [
               { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
-              { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+              { text: '🔄 تعديل نقاط المقايضة', callback_data: `admin_edit_exchange_${user.telegram_id}` }
             ],
             [
               { text: '🚫 حظر', callback_data: `admin_ban_${user.telegram_id}` }
@@ -2649,7 +2738,7 @@ bot.on('callback_query', async (query) => {
     // حذف المهمة
     await Task.delete(taskId);
 
-    // إرجاع الرصيد أو نقاط التبادل المتبقية
+    // إرجاع الرصيد أو نقاط المقايضة المتبقية
     if (taskToDelete && taskToDelete.status === 'active') {
       if (taskToDelete.task_type === 'paid') {
         const acceptedCount = await Submission.getAcceptedCount(taskId);
@@ -2815,7 +2904,7 @@ async function checkAndDeleteExpiredTasks() {
               logSuccess('TASK_CLEANUP', `Refunded ${remainingAmount} USDT to user ${task.owner_id} for expired task ${task.id}`);
             }
           } else {
-            // إرجاع نقاط التبادل المتبقية
+            // إرجاع نقاط المقايضة المتبقية
             const remainingPoints = task.required_count - acceptedCount;
             if (remainingPoints > 0) {
               await User.updateExchangePoints(task.owner_id, remainingPoints);

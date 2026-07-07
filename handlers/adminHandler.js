@@ -1,4 +1,4 @@
-import User from '../models/User.js';
+﻿import User from '../models/User.js';
 import Admin from '../models/Admin.js';
 import Settings from '../models/Settings.js';
 import Submission from '../models/Submission.js';
@@ -92,7 +92,7 @@ export async function handleAdminSteps(bot, msg) {
     // أزرار قديمة للتوافق
     '🔍 البحث عن مستخدم', '✏️ تعديل نص الدعم', '🔧 تغيير الحد الأقصى للأشخاص',
     '📝 تغيير حد المهام للمستخدم', '⏱️ تغيير وقت المهلة', '🔄 تغيير مهلة التحسين',
-    '💰 تغيير الحد الأدنى للمكافأة', '🌐 حد أدنى مكافأة خارجية', '🔄 تكلفة نقاط التبادل',
+    '💰 تغيير الحد الأدنى للمكافأة', '🌐 حد أدنى مكافأة خارجية', '🔄 تكلفة نقاط المقايضة',
     '💸 تغيير الحد الأدنى للسحب', '🗑️ حذف مهمة'
   ];
   
@@ -120,7 +120,7 @@ export async function handleAdminSteps(bot, msg) {
         message += `🆔 ID: ${user.telegram_id}\n`;
         message += `👤 اليوزرنيم: ${user.username ? '@' + user.username : 'غير متوفر'}\n`;
         message += `💰 المحفظة: ${user.balance} USDT\n`;
-        message += `🔄 نقاط التبادل: ${exchangePoints}\n`;
+        message += `🔄 نقاط المقايضة: ${exchangePoints}\n`;
         message += `🌐 اللغة: ${user.language}\n`;
         message += `${user.is_banned ? '🔴 محظور' : '🟢 نشط'}\n`;
         message += `📅 تاريخ التسجيل: ${new Date(user.created_at).toLocaleDateString('ar')}`;
@@ -130,7 +130,7 @@ export async function handleAdminSteps(bot, msg) {
             inline_keyboard: [
               [
                 { text: '💰 تعديل المحفظة', callback_data: `admin_edit_balance_${user.telegram_id}` },
-                { text: '🔄 تعديل نقاط التبادل', callback_data: `admin_edit_exchange_${user.telegram_id}` }
+                { text: '🔄 تعديل نقاط المقايضة', callback_data: `admin_edit_exchange_${user.telegram_id}` }
               ],
               [
                 { text: user.is_banned ? '✅ إلغاء الحظر' : '🚫 حظر', callback_data: user.is_banned ? `admin_unban_${user.telegram_id}` : `admin_ban_${user.telegram_id}` }
@@ -211,7 +211,7 @@ export async function handleAdminSteps(bot, msg) {
       await User.setExchangePoints(state.userId, newExchangePoints);
       await bot.sendMessage(
         chatId,
-        `✅ تم تحديث نقاط التبادل للمستخدم إلى: ${newExchangePoints}`,
+        `✅ تم تحديث نقاط المقايضة للمستخدم إلى: ${newExchangePoints}`,
         getAdminKeyboard(msg.from.id)
       );
       adminStates.delete(chatId);
@@ -288,7 +288,7 @@ export async function handleAdminSteps(bot, msg) {
       await Settings.setExchangePointsCost(exchangePointsCost);
       await bot.sendMessage(
         chatId,
-        `✅ تم تحديث تكلفة نقاط التبادل إلى: ${exchangePointsCost} نقطة لكل شخص مطلوب`,
+        `✅ تم تحديث تكلفة نقاط المقايضة إلى: ${exchangePointsCost} نقطة لكل شخص مطلوب`,
         getAdminKeyboard(msg.from.id)
       );
       adminStates.delete(chatId);
@@ -415,7 +415,7 @@ export async function handleAdminSteps(bot, msg) {
           return true;
         }
         
-        // إرجاع الرصيد أو نقاط التبادل المتبقية قبل الحذف
+        // إرجاع الرصيد أو نقاط المقايضة المتبقية قبل الحذف
         if (task.status === 'active') {
           if (task.task_type === 'paid') {
             const acceptedCount = await Submission.getAcceptedCount(taskId);
@@ -468,6 +468,36 @@ export async function handleAdminSteps(bot, msg) {
       return false;
   }
 
+  return true;
+}
+
+// أضف معالجة التقييدات هنا
+export async function handleRestrictionStep(bot, msg) {
+  const chatId = msg.chat.id;
+  const state = adminStates.get(chatId);
+  if (!state || state.step !== 'awaiting_restriction_user_id') return false;
+
+  if (msg.text === '❌ إلغاء') {
+    adminStates.delete(chatId);
+    await bot.sendMessage(chatId, '❌ تم إلغاء العملية');
+    return true;
+  }
+
+  const Restriction = (await import('../models/Restriction.js')).default;
+  const userId = parseInt(msg.text);
+  if (isNaN(userId)) {
+    await bot.sendMessage(chatId, '❌ ID غير صحيح');
+    return true;
+  }
+  const user = await User.findByTelegramId(userId);
+  if (!user) {
+    await bot.sendMessage(chatId, '❌ المستخدم غير موجود');
+    adminStates.delete(chatId);
+    return true;
+  }
+  await Restriction.create({ userId: user.id, type: state.restrictType, duration: 24, reason: 'قرار أدمن' });
+  await bot.sendMessage(chatId, `✅ تم تطبيق التقييد (${state.restrictType}) على المستخدم ${userId} لمدة 24 ساعة`);
+  adminStates.delete(chatId);
   return true;
 }
 
@@ -683,4 +713,207 @@ export async function handleDeleteTask(bot, msg) {
       }
     }
   );
+}
+
+// ============= إدارة المخالفات =============
+
+export async function handleViewViolations(bot, msg) {
+  const chatId = msg.chat.id;
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  adminStates.set(chatId, { step: 'awaiting_violations_user_id' });
+  await bot.sendMessage(chatId, '⚠️ عرض مخالفات مستخدم\n\nأرسل ID المستخدم:', {
+    reply_markup: { keyboard: [['❌ إلغاء']], resize_keyboard: true }
+  });
+}
+
+export async function handleViolationSteps(bot, msg) {
+  const chatId = msg.chat.id;
+  const state = adminStates.get(chatId);
+  if (!state) return false;
+
+  if (state.step === 'awaiting_violations_user_id') {
+    const Violation = (await import('../models/Violation.js')).default;
+    const userId = parseInt(msg.text);
+    if (isNaN(userId)) {
+      await bot.sendMessage(chatId, '❌ ID غير صحيح');
+      return true;
+    }
+    const user = await User.findByTelegramId(userId);
+    if (!user) {
+      await bot.sendMessage(chatId, '❌ المستخدم غير موجود', getAdminKeyboard(msg.from.id));
+      adminStates.delete(chatId);
+      return true;
+    }
+    const violations = await Violation.getUserViolations(user.id);
+    const points = await Violation.getUserViolationPoints(user.id);
+
+    let message = `⚠️ مخالفات المستخدم ${userId}\n`;
+    message += `📊 إجمالي النقاط النشطة: ${points}\n\n`;
+
+    if (violations.length === 0) {
+      message += '✅ لا توجد مخالفات';
+    } else {
+      violations.forEach((v, i) => {
+        const status = v.status === 'active' ? '🔴' : '⚪';
+        message += `${status} #${v.id} | ${v.type} | ${v.points} نقطة\n`;
+        if (v.reason) message += `   📝 ${v.reason}\n`;
+        message += `   📅 ${new Date(v.created_at).toLocaleDateString('ar')}\n`;
+      });
+    }
+
+    const keyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🗑️ حذف مخالفة', callback_data: `admin_remove_violation_${user.id}` }],
+          [{ text: '🔄 إعادة ضبط النقاط', callback_data: `admin_reset_violations_${user.id}` }]
+        ]
+      }
+    };
+
+    await bot.sendMessage(chatId, message, keyboard);
+    adminStates.delete(chatId);
+    return true;
+  }
+
+  if (state.step === 'awaiting_violation_id_to_remove') {
+    const Violation = (await import('../models/Violation.js')).default;
+    const violationId = parseInt(msg.text);
+    if (isNaN(violationId)) {
+      await bot.sendMessage(chatId, '❌ ID غير صحيح');
+      return true;
+    }
+    await Violation.remove(violationId);
+    await bot.sendMessage(chatId, `✅ تم حذف المخالفة #${violationId}`, getAdminKeyboard(msg.from.id));
+    adminStates.delete(chatId);
+    return true;
+  }
+
+  return false;
+}
+
+// ============= إدارة الحظر =============
+
+export async function handleActiveBans(bot, msg) {
+  const chatId = msg.chat.id;
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  const db = (await import('../database.js')).default;
+
+  db.all(
+    `SELECT b.*, u.telegram_id, u.username FROM bans b
+     JOIN users u ON b.user_id = u.id
+     WHERE b.status = 'active'
+     AND (b.end_date IS NULL OR datetime(b.end_date) > datetime('now'))
+     ORDER BY b.created_at DESC LIMIT 20`,
+    (err, bans) => {
+      if (err || !bans || bans.length === 0) {
+        bot.sendMessage(chatId, '✅ لا يوجد مستخدمون محظورون حالياً', getAdminKeyboard(msg.from.id));
+        return;
+      }
+
+      let message = `🚫 المستخدمون المحظورون (${bans.length})\n\n`;
+      bans.forEach((ban, i) => {
+        const type = ban.type === 'permanent' ? '🔴 دائم' : `⏳ مؤقت`;
+        message += `${i + 1}. ${ban.telegram_id} (${ban.username || '-'})\n`;
+        message += `   ${type} | سبب: ${ban.reason || 'غير محدد'}\n`;
+        if (ban.end_date) message += `   ينتهي: ${new Date(ban.end_date).toLocaleDateString('ar')}\n`;
+        message += `   /unban_${ban.user_id}\n\n`;
+      });
+
+      bot.sendMessage(chatId, message, getAdminKeyboard(msg.from.id));
+    }
+  );
+}
+
+export async function handleLiftBan(bot, msg, userId) {
+  const chatId = msg.chat.id;
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  const Ban = (await import('../models/Ban.js')).default;
+  const user = await User.findById(userId);
+  if (!user) {
+    await bot.sendMessage(chatId, '❌ المستخدم غير موجود');
+    return;
+  }
+
+  const activeBan = await Ban.getActiveBan(userId);
+  if (!activeBan) {
+    await bot.sendMessage(chatId, '❌ المستخدم غير محظور');
+    return;
+  }
+
+  await Ban.lift(activeBan.id, msg.from.id);
+  await User.setBanStatus(userId, false);
+
+  await bot.sendMessage(chatId, `✅ تم رفع الحظر عن المستخدم ${user.telegram_id}`, getAdminKeyboard(msg.from.id));
+
+  try {
+    await bot.sendMessage(user.telegram_id, '✅ تم رفع الحظر عن حسابك\n\nيمكنك استخدام البوت الآن');
+  } catch (_) {}
+}
+
+// ============= إدارة الإبلاغات =============
+
+export async function handlePendingReports(bot, msg) {
+  const chatId = msg.chat.id;
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  const Report = (await import('../models/Report.js')).default;
+  const reports = await Report.getPending();
+
+  if (reports.length === 0) {
+    await bot.sendMessage(chatId, '✅ لا توجد إبلاغات معلقة', getAdminKeyboard(msg.from.id));
+    return;
+  }
+
+  await bot.sendMessage(chatId, `📋 الإبلاغات المعلقة: ${reports.length}\n\nاستخدم الأزرار للمراجعة:`);
+
+  for (const report of reports.slice(0, 5)) {
+    let message = `🚨 إبلاغ #${report.id}\n\n`;
+    message += `👤 المُبلِّغ: ${report.reporter_telegram_id} (@${report.reporter_username || '-'})\n`;
+    message += `🎯 المُبلَّغ عنه: ${report.reported_telegram_id} (@${report.reported_username || '-'})\n`;
+    message += `🤖 المهمة: ${report.bot_name}\n`;
+    if (report.reason) message += `📝 السبب: ${report.reason}\n`;
+    message += `📅 ${new Date(report.created_at).toLocaleDateString('ar')}`;
+
+    const keyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ قبول الإبلاغ', callback_data: `admin_report_approve_${report.id}` },
+            { text: '❌ رفض الإبلاغ', callback_data: `admin_report_reject_${report.id}` }
+          ],
+          [{ text: '👁 عرض الإثبات', callback_data: `admin_report_view_${report.id}` }]
+        ]
+      }
+    };
+
+    await bot.sendMessage(chatId, message, keyboard);
+  }
+}
+
+// ============= إدارة التقييدات =============
+
+export async function handleAddRestriction(bot, msg) {
+  const chatId = msg.chat.id;
+  const isAdmin = await Admin.isAdmin(msg.from.id);
+  if (!isAdmin) return;
+
+  const keyboard = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🚫 منع إنشاء مهام', callback_data: 'admin_restrict_no_task_creation' }],
+        [{ text: '💸 منع السحب', callback_data: 'admin_restrict_no_withdrawal' }],
+        [{ text: '🚨 منع الإبلاغ', callback_data: 'admin_restrict_no_reporting' }],
+        [{ text: '❌ إلغاء', callback_data: 'admin_restrictions_close' }]
+      ]
+    }
+  };
+
+  await bot.sendMessage(chatId, '🔒 إضافة تقييد\n\nاختر نوع التقييد:', keyboard);
 }

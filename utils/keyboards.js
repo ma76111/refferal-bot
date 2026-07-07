@@ -1,4 +1,4 @@
-export const mainMenu = {
+﻿export const mainMenu = {
   reply_markup: {
     keyboard: [
       ['📋 المهام المتاحة', '➕ إضافة مهمة'],
@@ -173,7 +173,7 @@ export const adminSettingsKeyboard = {
       [{ text: '🔄 مهلة التحسين', callback_data: 'admin_setting_improvement_timeout' }],
       [{ text: '💰 حد أدنى مكافأة (تيليجرام)', callback_data: 'admin_setting_min_reward' }],
       [{ text: '🌐 حد أدنى مكافأة (خارجي)', callback_data: 'admin_setting_min_external_reward' }],
-      [{ text: '🔄 تكلفة نقاط التبادل', callback_data: 'admin_setting_exchange_cost' }],
+      [{ text: '🔄 تكلفة نقاط المقايضة', callback_data: 'admin_setting_exchange_cost' }],
       [{ text: '💸 الحد الأدنى للسحب', callback_data: 'admin_setting_min_withdrawal' }],
       [{ text: '❌ إغلاق', callback_data: 'admin_settings_close' }]
     ]
@@ -187,6 +187,10 @@ export const adminToolsKeyboard = {
       [{ text: '🔍 البحث عن مستخدم', callback_data: 'admin_tool_search' }],
       [{ text: '✏️ تعديل نص الدعم', callback_data: 'admin_tool_support_text' }],
       [{ text: '🗑️ حذف مهمة', callback_data: 'admin_tool_delete_task' }],
+      [{ text: '⚠️ مخالفات مستخدم', callback_data: 'admin_tool_violations' }],
+      [{ text: '🚫 المحظورون الآن', callback_data: 'admin_tool_active_bans' }],
+      [{ text: '🚨 الإبلاغات المعلقة', callback_data: 'admin_tool_reports' }],
+      [{ text: '🔒 إضافة تقييد', callback_data: 'admin_tool_restrict' }],
       [{ text: '❌ إغلاق', callback_data: 'admin_tools_close' }]
     ]
   }

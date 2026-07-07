@@ -59,5 +59,27 @@ export function authMiddleware(req, res, next) {
   const payload = verifyToken(header.slice(7));
   if (!payload) return res.status(401).json({ error: 'Invalid token' });
   req.user = payload;
+
+  // تسجيل الجهاز بعد التحقق الناجح من JWT (غير متزامن)
+  import('./middleware/deviceLogger.js').then(({ logDevice, isBannedDevice }) => {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+      || req.socket?.remoteAddress
+      || req.ip
+      || '';
+    const userAgent = req.headers['user-agent'] || '';
+    const fingerprint = crypto.createHash('sha256')
+      .update(`${ip}|${userAgent}`)
+      .digest('hex');
+
+    // فحص الأجهزة المحظورة
+    isBannedDevice(fingerprint).then((banned) => {
+      if (banned) {
+        // لا نوقف الطلب هنا (المستخدم مصادَق عليه بالفعل)، لكن نسجل فقط
+        console.warn(`[deviceLogger] banned device fingerprint detected for user ${payload.id}: ${fingerprint}`);
+      }
+      logDevice(payload.id, req, 'web').catch(() => {});
+    }).catch(() => {});
+  }).catch(() => {});
+
   next();
 }

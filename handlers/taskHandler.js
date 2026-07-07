@@ -1,4 +1,4 @@
-import Task from '../models/Task.js';
+﻿import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Submission from '../models/Submission.js';
 import Settings from '../models/Settings.js';
@@ -274,7 +274,7 @@ export async function handleTaskCreationSteps(bot, msg) {
         if (exchangePoints < requiredPoints) {
           logger.warning(`User ${state.userId} has insufficient exchange points: ${exchangePoints} < ${requiredPoints}`);
           const messages = {
-            ar: `❌ نقاط التبادل لديك غير كافية لإنشاء هذه المهمة\n\n🔄 نقاطك الحالية: ${exchangePoints}\n📊 النقاط المطلوبة: ${requiredPoints} (${pointsCost} نقطة × ${count} شخص)\n💡 المطلوب: ${requiredPoints - exchangePoints} نقطة إضافية\n\n✅ لزيادة نقاطك:\n• نفذ مهام الآخرين لتحصل على نقاط`,
+            ar: `❌ نقاط المقايضة لديك غير كافية لإنشاء هذه المهمة\n\n🔄 نقاطك الحالية: ${exchangePoints}\n📊 النقاط المطلوبة: ${requiredPoints} (${pointsCost} نقطة × ${count} شخص)\n💡 المطلوب: ${requiredPoints - exchangePoints} نقطة إضافية\n\n✅ لزيادة نقاطك:\n• نفذ مهام الآخرين لتحصل على نقاط`,
             en: `❌ Your exchange points are insufficient to create this task\n\n🔄 Your current points: ${exchangePoints}\n📊 Required points: ${requiredPoints} (${pointsCost} points × ${count} people)\n💡 Needed: ${requiredPoints - exchangePoints} more points\n\n✅ To increase your points:\n• Complete others' tasks to get points`,
             ru: `❌ Ваших баллов обмена недостаточно для создания этой задачи\n\n🔄 Ваши текущие баллы: ${exchangePoints}\n📊 Требуемые баллы: ${requiredPoints} (${pointsCost} баллов × ${count} человек)\n💡 Необходимо: ${requiredPoints - exchangePoints} дополнительных баллов\n\n✅ Чтобы увеличить баллы:\n• Выполняйте задачи других`
           };
@@ -938,13 +938,13 @@ export async function handleTaskConfirmation(bot, query) {
         await User.updateBalance(state.userId, -totalCost);
         logger.success(`Deducted ${totalCost} USDT from user ${state.userId} balance`);
       } else if (state.taskType === 'exchange') {
-        // التحقق مرة أخرى من نقاط التبادل قبل الخصم (للأمان)
+        // التحقق مرة أخرى من نقاط المقايضة قبل الخصم (للأمان)
         const exchangePoints = await User.getExchangePoints(state.userId);
         const requiredPoints = state.requiredPoints || state.requiredCount;
         if (exchangePoints < requiredPoints) {
           logger.error(`User ${state.userId} has insufficient exchange points at confirmation`);
           const messages = {
-            ar: `❌ نقاط التبادل لديك غير كافية (${exchangePoints}/${requiredPoints})`,
+            ar: `❌ نقاط المقايضة لديك غير كافية (${exchangePoints}/${requiredPoints})`,
             en: `❌ Your exchange points are insufficient (${exchangePoints}/${requiredPoints})`,
             ru: `❌ Ваших баллов обмена недостаточно (${exchangePoints}/${requiredPoints})`
           };
@@ -957,7 +957,7 @@ export async function handleTaskConfirmation(bot, query) {
           return;
         }
         
-        // خصم نقاط التبادل من المستخدم
+        // خصم نقاط المقايضة من المستخدم
         await User.updateExchangePoints(state.userId, -requiredPoints);
         logger.success(`Deducted ${requiredPoints} exchange points from user ${state.userId}`);
       }

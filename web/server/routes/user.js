@@ -4,21 +4,33 @@ import { authMiddleware } from '../auth.js';
 
 const router = Router();
 
+const MAIN_ADMIN_ID = parseInt(process.env.MAIN_ADMIN_ID || '0');
+
+function checkIsAdmin(telegramId) {
+  return new Promise((resolve) => {
+    if (telegramId === MAIN_ADMIN_ID) return resolve(true);
+    db.get('SELECT id FROM admins WHERE telegram_id = ? AND is_active = 1', [telegramId], (err, row) => {
+      resolve(!!row);
+    });
+  });
+}
+
 // GET /api/user/me
-router.get('/me', authMiddleware, (req, res) => {
-  db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, user) => {
+router.get('/me', authMiddleware, async (req, res) => {
+  db.get('SELECT * FROM users WHERE id = ?', [req.user.id], async (err, user) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const exchangePoints = user.exchange_points || 0;
+    const is_admin = await checkIsAdmin(user.telegram_id);
     res.json({
       id: user.id,
       telegram_id: user.telegram_id,
       username: user.username,
       balance: user.balance || 0,
-      exchange_points: exchangePoints,
+      exchange_points: user.exchange_points || 0,
       language: user.language,
       created_at: user.created_at,
+      is_admin,
     });
   });
 });

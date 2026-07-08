@@ -27,7 +27,7 @@ export default function Login() {
         navigate('/')
       } catch (err) {
         console.error('[TelegramAuth] Error:', err.response?.status, err.response?.data);
-        alert(err.response?.data?.error || 'Login failed')
+        alert(err.response?.data?.error || err.message || 'Login failed. Please try again or contact support.')
       }
     }
 

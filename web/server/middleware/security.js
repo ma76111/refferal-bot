@@ -9,17 +9,6 @@ export const securityMiddleware = helmet({
     includeSubDomains: true,
   },
   frameguard: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://telegram.org', 'https://*.telegram.org'],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https:', 'http:'],
-      fontSrc: ["'self'", 'https:', 'data:'],
-      objectSrc: ["'none'"],
-      frameSrc: ["'self'", 'https://oauth.telegram.org', 'https://telegram.org', 'https://*.telegram.org'],
-    },
-  },
+  contentSecurityPolicy: false,
   referrerPolicy: { policy: 'no-referrer-when-downgrade' },
 });

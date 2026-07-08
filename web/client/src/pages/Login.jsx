@@ -6,16 +6,11 @@ import robotVideo from '../assets/robot.webm'
 
 const BOT_NAME = import.meta.env.VITE_BOT_NAME || 'YourBot'
 
-// تعريف الـ callback خارج الـ component عشان تيليجرام يلاقيها دايماً
+// callback خارج الـ component
 let _loginCallback = null
 window.onTelegramAuth = (data) => {
-  console.log('%c[LOGIN MONITOR] ✅ onTelegramAuth تم استدعاؤها!', 'color: lime; font-weight: bold')
-  console.log('[LOGIN MONITOR] البيانات المستلمة:', data)
-  if (_loginCallback) {
-    _loginCallback(data)
-  } else {
-    console.error('[LOGIN MONITOR] ❌ _loginCallback غير معرّف!')
-  }
+  console.log('[TelegramAuth] data:', data)
+  if (_loginCallback) _loginCallback(data)
 }
 
 export default function Login() {
@@ -27,45 +22,45 @@ export default function Login() {
     if (user) navigate('/')
   }, [user])
 
+  // معالجة redirect callback من تيليجرام
   useEffect(() => {
-    console.log('%c[LOGIN MONITOR] 🚀 صفحة تسجيل الدخول تحملت', 'color: cyan; font-weight: bold')
-    console.log('[LOGIN MONITOR] BOT_NAME:', BOT_NAME)
-    console.log('[LOGIN MONITOR] Current URL:', window.location.href)
+    const params = new URLSearchParams(window.location.search)
+    const tgData = {}
+    let hasTgData = false
 
-    // ربط الـ callback بالـ component
+    for (const [key, value] of params.entries()) {
+      if (['id','first_name','last_name','username','photo_url','auth_date','hash'].includes(key)) {
+        tgData[key] = value
+        hasTgData = true
+      }
+    }
+
+    if (hasTgData && tgData.hash) {
+      console.log('[TelegramAuth] Redirect data:', tgData)
+      // امسح الـ params من URL
+      window.history.replaceState({}, '', '/login')
+      api.post('/auth/telegram', tgData)
+        .then(res => {
+          login(res.data.token, res.data.user)
+          navigate('/')
+        })
+        .catch(err => {
+          alert(err.response?.data?.error || err.message || 'Login failed')
+        })
+    }
+  }, [])
+
+  useEffect(() => {
     _loginCallback = async (data) => {
       try {
-        console.log('[LOGIN MONITOR] 📡 إرسال للسيرفر...')
         const res = await api.post('/auth/telegram', data)
-        console.log('[LOGIN MONITOR] ✅ رد السيرفر:', res.data)
         login(res.data.token, res.data.user)
         navigate('/')
       } catch (err) {
-        console.error('%c[LOGIN MONITOR] ❌ خطأ من السيرفر:', 'color: red; font-weight: bold', err.response?.status, err.response?.data)
-        alert(err.response?.data?.error || err.message || 'Login failed. Please try again or contact support.')
+        alert(err.response?.data?.error || err.message || 'Login failed')
       }
     }
 
-    // مراقبة postMessage
-    const messageHandler = (event) => {
-      if (event.origin.includes('telegram')) {
-        console.log('%c[LOGIN MONITOR] 📨 postMessage من تيليجرام!', 'color: lime; font-weight: bold')
-        console.log('[LOGIN MONITOR] origin:', event.origin)
-        console.log('[LOGIN MONITOR] البيانات:', JSON.stringify(event.data))
-        // لو وصل auth_result
-        if (event.data && event.data.event === 'auth_result') {
-          console.log('%c[LOGIN MONITOR] 🎉 auth_result وصل!', 'color: gold; font-weight: bold', event.data)
-        }
-        if (event.data && event.data.event === 'visible_off') {
-          console.warn('[LOGIN MONITOR] ⚠️ النافذة اتقفلت - لم يتم تسجيل الدخول')
-        }
-      } else {
-        console.log('[LOGIN MONITOR] postMessage من مصدر آخر:', event.origin, event.data)
-      }
-    }
-    window.addEventListener('message', messageHandler)
-
-    // إزالة السكريبت القديم
     const oldScript = document.querySelector('script[data-telegram-login]')
     if (oldScript) oldScript.remove()
 
@@ -73,27 +68,16 @@ export default function Login() {
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
     script.setAttribute('data-telegram-login', BOT_NAME)
     script.setAttribute('data-size', 'large')
-    script.setAttribute('data-onauth', 'onTelegramAuth')
+    script.setAttribute('data-auth-url', window.location.origin + '/login')
     script.setAttribute('data-request-access', 'write')
     script.async = true
 
-    script.onload = () => {
-      console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل', 'color: lime; font-weight: bold')
-      console.log('[LOGIN MONITOR] window.Telegram:', window.Telegram)
-      console.log('[LOGIN MONITOR] window.TelegramLoginWidget:', window.TelegramLoginWidget)
-      // فحص الـ iframe اللي أنشأه تيليجرام
-      const iframes = document.querySelectorAll('iframe')
-      iframes.forEach((f, i) => console.log(`[LOGIN MONITOR] iframe[${i}]:`, f.src))
-    }
-    script.onerror = (e) => console.error('[LOGIN MONITOR] ❌ فشل تحميل سكريبت تيليجرام!', e)
+    script.onload = () => console.log('[TelegramAuth] script loaded')
+    script.onerror = () => console.error('[TelegramAuth] script failed')
 
     if (widgetRef.current) {
       widgetRef.current.innerHTML = ''
       widgetRef.current.appendChild(script)
-    }
-
-    return () => {
-      window.removeEventListener('message', messageHandler)
     }
   }, [])
 
@@ -117,18 +101,10 @@ export default function Login() {
         <div className="robot-container">
           <video
             src={robotVideo}
-            autoPlay
-            loop
-            muted
-            playsInline
-            style={{
-              width: '280px',
-              height: 'auto',
-              filter: 'drop-shadow(0 0 30px rgba(56,189,248,0.35))'
-            }}
+            autoPlay loop muted playsInline
+            style={{ width: '280px', height: 'auto', filter: 'drop-shadow(0 0 30px rgba(56,189,248,0.35))' }}
           />
         </div>
-
         <h1 className="login-title">Workers Bot</h1>
         <p className="login-subtitle">⛏️ اعمل · اكسب · انسحب</p>
         <div className="login-divider"/>
@@ -136,12 +112,8 @@ export default function Login() {
         <div ref={widgetRef} className="tg-widget" />
         <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: '8px' }}>
           إذا لم يظهر زر تيليجرام،{' '}
-          <a
-            href={`https://t.me/${BOT_NAME}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'var(--accent)', textDecoration: 'underline' }}
-          >
+          <a href={`https://t.me/${BOT_NAME}`} target="_blank" rel="noopener noreferrer"
+            style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
             افتح البوت أولاً
           </a>
           {' '}ثم أعد تحميل الصفحة

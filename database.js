@@ -14,23 +14,6 @@ db.run('PRAGMA synchronous=NORMAL');
 db.run('PRAGMA cache_size=10000');
 db.run('PRAGMA temp_store=MEMORY');
 
-// Indexes لتسريع الـ queries
-db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
-db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)');
-db.run('CREATE INDEX IF NOT EXISTS idx_submissions_user ON task_submissions(user_id)');
-db.run('CREATE INDEX IF NOT EXISTS idx_submissions_task ON task_submissions(task_id)');
-db.run('CREATE INDEX IF NOT EXISTS idx_submissions_status ON task_submissions(status)');
-db.run('CREATE INDEX IF NOT EXISTS idx_submissions_created ON task_submissions(created_at)');
-db.run('CREATE INDEX IF NOT EXISTS idx_hidden_user ON hidden_tasks(user_id)');
-db.run('CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id)');
-db.run('CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status)');
-db.run('CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status)');
-db.run('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read)');
-db.run('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, priority)');
-db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_ip ON device_logs(ip_address)');
-db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_fingerprint ON device_logs(fingerprint)');
-db.run('CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at)');
-
 // Backup تلقائي كل 30 دقيقة
 const BACKUP_DIR = path.join(__dirname, 'backups');
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
@@ -496,6 +479,23 @@ db.serialize(() => {
       console.error('Error adding ton_address:', err.message);
     }
   });
+
+  // Indexes لتسريع الـ queries (بعد إنشاء الجداول)
+  db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_submissions_user ON task_submissions(user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_submissions_task ON task_submissions(task_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_submissions_status ON task_submissions(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_submissions_created ON task_submissions(created_at)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_hidden_user ON hidden_tasks(user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, priority)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_ip ON device_logs(ip_address)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_device_logs_fingerprint ON device_logs(fingerprint)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at)');
 
 });
 

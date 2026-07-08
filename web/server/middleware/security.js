@@ -8,19 +8,18 @@ export const securityMiddleware = helmet({
     maxAge: 31536000,
     includeSubDomains: true,
   },
-  frameguard: false, // disable x-frame-options to allow Telegram widget popups
+  frameguard: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://telegram.org', 'https://*.telegram.org'],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:', 'https://*.telegram.org'],
-      connectSrc: ["'self'", 'https:'],
-      fontSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https:', 'http:'],
+      fontSrc: ["'self'", 'https:', 'data:'],
       objectSrc: ["'none'"],
       frameSrc: ["'self'", 'https://oauth.telegram.org', 'https://telegram.org', 'https://*.telegram.org'],
-      upgradeInsecureRequests: [],
     },
   },
-  referrerPolicy: { policy: 'same-origin' },
+  referrerPolicy: { policy: 'no-referrer-when-downgrade' },
 });

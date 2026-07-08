@@ -6,6 +6,18 @@ import robotVideo from '../assets/robot.webm'
 
 const BOT_NAME = import.meta.env.VITE_BOT_NAME || 'YourBot'
 
+// تعريف الـ callback خارج الـ component عشان تيليجرام يلاقيها دايماً
+let _loginCallback = null
+window.onTelegramAuth = (data) => {
+  console.log('%c[LOGIN MONITOR] ✅ onTelegramAuth تم استدعاؤها!', 'color: lime; font-weight: bold')
+  console.log('[LOGIN MONITOR] البيانات المستلمة:', data)
+  if (_loginCallback) {
+    _loginCallback(data)
+  } else {
+    console.error('[LOGIN MONITOR] ❌ _loginCallback غير معرّف!')
+  }
+}
+
 export default function Login() {
   const { login, user } = useAuth()
   const navigate = useNavigate()
@@ -16,43 +28,36 @@ export default function Login() {
   }, [user])
 
   useEffect(() => {
-    console.log('%c[LOGIN MONITOR] 🚀 صفحة تسجيل الدخول تحملت', 'color: cyan; font-weight: bold');
-    console.log('[LOGIN MONITOR] BOT_NAME:', BOT_NAME);
-    console.log('[LOGIN MONITOR] Current URL:', window.location.href);
-    console.log('[LOGIN MONITOR] Origin:', window.location.origin);
+    console.log('%c[LOGIN MONITOR] 🚀 صفحة تسجيل الدخول تحملت', 'color: cyan; font-weight: bold')
+    console.log('[LOGIN MONITOR] BOT_NAME:', BOT_NAME)
+    console.log('[LOGIN MONITOR] Current URL:', window.location.href)
 
-    // مراقبة postMessage من تيليجرام
-    const messageHandler = (event) => {
-      console.log('%c[LOGIN MONITOR] 📨 postMessage وصل!', 'color: lime; font-weight: bold');
-      console.log('[LOGIN MONITOR] من:', event.origin);
-      console.log('[LOGIN MONITOR] البيانات:', event.data);
-    };
-    window.addEventListener('message', messageHandler);
-
-    // تعريف الـ callback
-    window.onTelegramAuth = async (data) => {
-      console.log('%c[LOGIN MONITOR] ✅ onTelegramAuth تم استدعاؤها!', 'color: lime; font-weight: bold');
-      console.log('[LOGIN MONITOR] البيانات المستلمة:', data);
+    // ربط الـ callback بالـ component
+    _loginCallback = async (data) => {
       try {
-        console.log('[LOGIN MONITOR] 📡 إرسال للسيرفر...');
+        console.log('[LOGIN MONITOR] 📡 إرسال للسيرفر...')
         const res = await api.post('/auth/telegram', data)
-        console.log('[LOGIN MONITOR] ✅ رد السيرفر:', res.data);
+        console.log('[LOGIN MONITOR] ✅ رد السيرفر:', res.data)
         login(res.data.token, res.data.user)
         navigate('/')
       } catch (err) {
-        console.error('%c[LOGIN MONITOR] ❌ خطأ من السيرفر:', 'color: red; font-weight: bold', err.response?.status, err.response?.data);
-        console.error('[LOGIN MONITOR] الخطأ الكامل:', err);
+        console.error('%c[LOGIN MONITOR] ❌ خطأ من السيرفر:', 'color: red; font-weight: bold', err.response?.status, err.response?.data)
         alert(err.response?.data?.error || err.message || 'Login failed. Please try again or contact support.')
       }
     }
-    console.log('[LOGIN MONITOR] window.onTelegramAuth تم تعريفها:', typeof window.onTelegramAuth);
+
+    // مراقبة postMessage
+    const messageHandler = (event) => {
+      if (event.origin.includes('telegram')) {
+        console.log('%c[LOGIN MONITOR] 📨 postMessage من تيليجرام!', 'color: lime; font-weight: bold')
+        console.log('[LOGIN MONITOR] البيانات:', event.data)
+      }
+    }
+    window.addEventListener('message', messageHandler)
 
     // إزالة السكريبت القديم
     const oldScript = document.querySelector('script[data-telegram-login]')
-    if (oldScript) {
-      console.log('[LOGIN MONITOR] 🗑️ حذف السكريبت القديم');
-      oldScript.remove()
-    }
+    if (oldScript) oldScript.remove()
 
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -62,23 +67,16 @@ export default function Login() {
     script.setAttribute('data-request-access', 'write')
     script.async = true
 
-    script.onload = () => {
-      console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل بنجاح', 'color: lime; font-weight: bold');
-    }
-    script.onerror = (e) => {
-      console.error('%c[LOGIN MONITOR] ❌ فشل تحميل سكريبت تيليجرام!', 'color: red; font-weight: bold', e);
-    }
+    script.onload = () => console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل', 'color: lime; font-weight: bold')
+    script.onerror = (e) => console.error('[LOGIN MONITOR] ❌ فشل تحميل سكريبت تيليجرام!', e)
 
     if (widgetRef.current) {
       widgetRef.current.innerHTML = ''
       widgetRef.current.appendChild(script)
-      console.log('[LOGIN MONITOR] 📌 السكريبت أُضيف للصفحة');
-    } else {
-      console.error('[LOGIN MONITOR] ❌ widgetRef.current فارغ!');
     }
 
     return () => {
-      window.removeEventListener('message', messageHandler);
+      window.removeEventListener('message', messageHandler)
     }
   }, [])
 

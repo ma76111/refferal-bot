@@ -21,7 +21,7 @@ export default function Layout({ children }) {
           <NotificationBell />
           <span>{user?.username ? `@${user.username}` : `#${user?.telegram_id}`}</span>
           <span className="balance-chip">💰 {parseFloat(user?.balance || 0).toFixed(2)}</span>
-          <button className="logout-btn" onClick={handleLogout}>خروج</button>
+          <button className="logout-btn" onClick={handleLogout}>🚪 خروج</button>
         </div>
       </header>
 

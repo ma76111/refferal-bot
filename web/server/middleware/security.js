@@ -4,11 +4,8 @@ import helmet from 'helmet';
  * إعداد Security Headers باستخدام helmet
  */
 export const securityMiddleware = helmet({
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-  },
-  frameguard: false,
-  contentSecurityPolicy: false,
+  hsts: false, // disable HSTS - causes issues with tunnel/dev environments
+  frameguard: false, // allow Telegram widget popups
+  contentSecurityPolicy: false, // disable CSP - handled separately if needed
   referrerPolicy: { policy: 'no-referrer-when-downgrade' },
 });

@@ -50,7 +50,17 @@ export default function Login() {
     const messageHandler = (event) => {
       if (event.origin.includes('telegram')) {
         console.log('%c[LOGIN MONITOR] 📨 postMessage من تيليجرام!', 'color: lime; font-weight: bold')
-        console.log('[LOGIN MONITOR] البيانات:', event.data)
+        console.log('[LOGIN MONITOR] origin:', event.origin)
+        console.log('[LOGIN MONITOR] البيانات:', JSON.stringify(event.data))
+        // لو وصل auth_result
+        if (event.data && event.data.event === 'auth_result') {
+          console.log('%c[LOGIN MONITOR] 🎉 auth_result وصل!', 'color: gold; font-weight: bold', event.data)
+        }
+        if (event.data && event.data.event === 'visible_off') {
+          console.warn('[LOGIN MONITOR] ⚠️ النافذة اتقفلت - لم يتم تسجيل الدخول')
+        }
+      } else {
+        console.log('[LOGIN MONITOR] postMessage من مصدر آخر:', event.origin, event.data)
       }
     }
     window.addEventListener('message', messageHandler)
@@ -67,7 +77,14 @@ export default function Login() {
     script.setAttribute('data-request-access', 'write')
     script.async = true
 
-    script.onload = () => console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل', 'color: lime; font-weight: bold')
+    script.onload = () => {
+      console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل', 'color: lime; font-weight: bold')
+      console.log('[LOGIN MONITOR] window.Telegram:', window.Telegram)
+      console.log('[LOGIN MONITOR] window.TelegramLoginWidget:', window.TelegramLoginWidget)
+      // فحص الـ iframe اللي أنشأه تيليجرام
+      const iframes = document.querySelectorAll('iframe')
+      iframes.forEach((f, i) => console.log(`[LOGIN MONITOR] iframe[${i}]:`, f.src))
+    }
     script.onerror = (e) => console.error('[LOGIN MONITOR] ❌ فشل تحميل سكريبت تيليجرام!', e)
 
     if (widgetRef.current) {

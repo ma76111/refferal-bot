@@ -21,5 +21,5 @@ export const securityMiddleware = helmet({
       frameSrc: ["'self'", 'https://oauth.telegram.org', 'https://telegram.org', 'https://*.telegram.org'],
     },
   },
-  referrerPolicy: { policy: 'no-referrer-when-downgrade' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });

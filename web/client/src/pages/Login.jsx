@@ -16,24 +16,43 @@ export default function Login() {
   }, [user])
 
   useEffect(() => {
-    // تعريف الـ callback على window مباشرة قبل تحميل السكريبت
+    console.log('%c[LOGIN MONITOR] 🚀 صفحة تسجيل الدخول تحملت', 'color: cyan; font-weight: bold');
+    console.log('[LOGIN MONITOR] BOT_NAME:', BOT_NAME);
+    console.log('[LOGIN MONITOR] Current URL:', window.location.href);
+    console.log('[LOGIN MONITOR] Origin:', window.location.origin);
+
+    // مراقبة postMessage من تيليجرام
+    const messageHandler = (event) => {
+      console.log('%c[LOGIN MONITOR] 📨 postMessage وصل!', 'color: lime; font-weight: bold');
+      console.log('[LOGIN MONITOR] من:', event.origin);
+      console.log('[LOGIN MONITOR] البيانات:', event.data);
+    };
+    window.addEventListener('message', messageHandler);
+
+    // تعريف الـ callback
     window.onTelegramAuth = async (data) => {
-      console.log('[TelegramAuth] Received data:', data);
+      console.log('%c[LOGIN MONITOR] ✅ onTelegramAuth تم استدعاؤها!', 'color: lime; font-weight: bold');
+      console.log('[LOGIN MONITOR] البيانات المستلمة:', data);
       try {
-        console.log('[TelegramAuth] Sending to server...');
+        console.log('[LOGIN MONITOR] 📡 إرسال للسيرفر...');
         const res = await api.post('/auth/telegram', data)
-        console.log('[TelegramAuth] Server response:', res.data);
+        console.log('[LOGIN MONITOR] ✅ رد السيرفر:', res.data);
         login(res.data.token, res.data.user)
         navigate('/')
       } catch (err) {
-        console.error('[TelegramAuth] Error:', err.response?.status, err.response?.data);
+        console.error('%c[LOGIN MONITOR] ❌ خطأ من السيرفر:', 'color: red; font-weight: bold', err.response?.status, err.response?.data);
+        console.error('[LOGIN MONITOR] الخطأ الكامل:', err);
         alert(err.response?.data?.error || err.message || 'Login failed. Please try again or contact support.')
       }
     }
+    console.log('[LOGIN MONITOR] window.onTelegramAuth تم تعريفها:', typeof window.onTelegramAuth);
 
-    // تأكد إزالة السكريبت القديم أولاً
+    // إزالة السكريبت القديم
     const oldScript = document.querySelector('script[data-telegram-login]')
-    if (oldScript) oldScript.remove()
+    if (oldScript) {
+      console.log('[LOGIN MONITOR] 🗑️ حذف السكريبت القديم');
+      oldScript.remove()
+    }
 
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -43,13 +62,23 @@ export default function Login() {
     script.setAttribute('data-request-access', 'write')
     script.async = true
 
+    script.onload = () => {
+      console.log('%c[LOGIN MONITOR] ✅ سكريبت تيليجرام تحمّل بنجاح', 'color: lime; font-weight: bold');
+    }
+    script.onerror = (e) => {
+      console.error('%c[LOGIN MONITOR] ❌ فشل تحميل سكريبت تيليجرام!', 'color: red; font-weight: bold', e);
+    }
+
     if (widgetRef.current) {
       widgetRef.current.innerHTML = ''
       widgetRef.current.appendChild(script)
+      console.log('[LOGIN MONITOR] 📌 السكريبت أُضيف للصفحة');
+    } else {
+      console.error('[LOGIN MONITOR] ❌ widgetRef.current فارغ!');
     }
 
     return () => {
-      if (oldScript) {} // لا تحذف الـ callback عند unmount لأن التيليجرام popup يحتاجه
+      window.removeEventListener('message', messageHandler);
     }
   }, [])
 
